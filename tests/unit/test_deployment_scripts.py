@@ -268,6 +268,16 @@ def test_release_images_preserve_source_revision() -> None:
         assert "org.opencontainers.image.revision=$SOURCE_REVISION" in contents
 
 
+def test_web_image_supports_apps_without_public_assets() -> None:
+    dockerfile = (PROJECT_ROOT / "web" / "Dockerfile").read_text(encoding="utf-8")
+
+    create_public = dockerfile.index("RUN mkdir -p public")
+    build_application = dockerfile.index("RUN npm run build")
+    copy_public = dockerfile.index("COPY --from=builder /app/public ./public")
+
+    assert create_public < build_application < copy_public
+
+
 def test_e2e_api_does_not_hold_the_uv_cache_lock_during_cleanup() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     e2e_job = workflow.split("  e2e:", maxsplit=1)[1].split("\n  ml-contract:", maxsplit=1)[0]
