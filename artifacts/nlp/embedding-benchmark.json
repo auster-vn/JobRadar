@@ -1,0 +1,7 @@
+{
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "examples": 50,
+  "dimensions": 384,
+  "latency_mean_ms": 11.602,
+  "latency_p95_ms": 14.583
+}

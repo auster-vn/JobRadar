@@ -1,0 +1,179 @@
+name: jobradarvn
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: jobradarvn
+      POSTGRES_USER: jobradarvn
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-jobradarvn}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobradarvn -d jobradarvn"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  migrate:
+    build: .
+    image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
+    command: alembic upgrade head
+    environment: &backend-env
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://jobradarvn:${DB_PASSWORD:-jobradarvn}@db:5432/jobradarvn
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-secret-change-me}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-development-admin-key}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:-development-cv-encryption-key-change-me}
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      ENABLE_ITVIEC_SCRAPER: ${ENABLE_ITVIEC_SCRAPER:-false}
+      ENABLE_TOPCV_SCRAPER: ${ENABLE_TOPCV_SCRAPER:-false}
+      ENABLE_VIETNAMWORKS_SCRAPER: ${ENABLE_VIETNAMWORKS_SCRAPER:-false}
+      LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      SALARY_MODEL_URL: http://ml-api:8002
+      DBT_HOST: db
+      DBT_USER: jobradarvn
+      DBT_PASSWORD: ${DB_PASSWORD:-jobradarvn}
+      DBT_DATABASE: jobradarvn
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  salary-data:
+    image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        python scripts/import_salary_snapshot.py data/vietjobs_it_salary_observations.csv
+        python scripts/backfill_job_experience.py
+        python scripts/backfill_job_titles.py
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
+    environment: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      salary-data:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  worker:
+    image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
+    command: celery -A workers.celery_app worker -Q alerts,scraping --concurrency=4 --loglevel=info
+    environment: *backend-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  ml-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.ml
+    image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
+    command: celery -A workers.celery_app worker -Q nlp,ml,analytics --concurrency=1 --loglevel=info
+    environment: *backend-env
+    volumes:
+      - ml_artifacts:/app/artifacts
+      - model_cache:/app/.cache
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      salary-data:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+  ml-api:
+    image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
+    command: uvicorn ml.serving:app --host 0.0.0.0 --port 8002
+    environment: *backend-env
+    volumes:
+      - ml_artifacts:/app/artifacts:ro
+      - model_cache:/app/.cache
+    depends_on:
+      ml-worker:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  mlflow:
+    image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
+    command: >-
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////app/artifacts/mlflow.db
+      --default-artifact-root /app/artifacts/mlruns
+    volumes:
+      - ml_artifacts:/app/artifacts
+    ports:
+      - "5000:5000"
+
+  beat:
+    image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
+    command: celery -A workers.celery_app beat --loglevel=info
+    environment: *backend-env
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: web
+    image: ${WEB_IMAGE:-jobradarvn-web:latest}
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  ml_artifacts:
+  model_cache:

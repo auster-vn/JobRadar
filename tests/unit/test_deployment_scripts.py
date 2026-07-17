@@ -1,0 +1,341 @@
+import os
+import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+PROJECT_ROOT = Path(__file__).parents[2]
+
+
+def _release(root: Path, release_id: str) -> Path:
+    release = root / "releases" / release_id
+    release.mkdir(parents=True)
+    for name in (
+        "compose.yaml",
+        "compose.production.yaml",
+        "compose.monitoring.yaml",
+        "compose.monitoring.production.yaml",
+        ".env",
+    ):
+        (release / name).write_text("name: test\n", encoding="utf-8")
+    return release
+
+
+def test_deploy_script_activates_and_rolls_back_releases(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    first = _release(deploy_root, "release-1")
+    second = _release(deploy_root, "release-2")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "MIN_FREE_DISK_MB": "1",
+    }
+    script = PROJECT_ROOT / "scripts" / "deploy_production.sh"
+
+    subprocess.run(  # noqa: S603
+        [str(script), "deploy", str(deploy_root), "release-1"],
+        check=True,
+        env=env,
+    )
+    assert (deploy_root / "current").resolve() == first
+
+    subprocess.run(  # noqa: S603
+        [str(script), "deploy", str(deploy_root), "release-2"],
+        check=True,
+        env=env,
+    )
+    assert (deploy_root / "current").resolve() == second
+    assert (deploy_root / ".previous-release").read_text(encoding="utf-8").strip() == str(first)
+
+    subprocess.run(  # noqa: S603
+        [str(script), "rollback", str(deploy_root)], check=True, env=env
+    )
+    assert (deploy_root / "current").resolve() == first
+    log = docker_log.read_text(encoding="utf-8")
+    assert "compose -f compose.yaml -f compose.production.yaml" in log
+    assert "compose.monitoring.production.yaml pull" in log
+    assert "compose.monitoring.production.yaml up -d --no-build" in log
+    assert log.index("image prune -f") < log.index("compose.monitoring.production.yaml pull")
+
+
+def test_deploy_script_rejects_release_when_disk_preflight_fails(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    _release(deploy_root, "release-1")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "MIN_FREE_DISK_MB": "999999999",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "deploy",
+            str(deploy_root),
+            "release-1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "Insufficient disk space" in result.stderr
+    assert "image prune -f" in docker_log.read_text(encoding="utf-8")
+    assert "compose.monitoring.production.yaml pull" not in docker_log.read_text(encoding="utf-8")
+    assert not (deploy_root / "current").exists()
+
+
+def test_release_cleanup_preserves_rollback_and_scopes_image_pruning(
+    tmp_path: Path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == image && ${2:-} == ls ]]; then\n"
+        "  printf '%s\\n' \"$DOCKER_IMAGES\"\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [[ ${1:-} == container && ${2:-} == ls ]]; then\n"
+        "  printf '%s\\n' \"${DOCKER_CONTAINER_IMAGES:-}\"\n"
+        "  exit 0\n"
+        "fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    releases: list[Path] = []
+    image_refs: list[list[str]] = []
+    for index in range(7):
+        release = _release(deploy_root, f"release-{index}")
+        sha = f"{index:040x}"
+        refs = [
+            f"ghcr.io/example/jobradarvn-{component}:{sha}"
+            for component in ("backend", "ml", "web")
+        ]
+        (release / ".env").write_text(
+            "\n".join(
+                (
+                    f"BACKEND_IMAGE={refs[0]}",
+                    f"ML_IMAGE={refs[1]}",
+                    f"WEB_IMAGE={refs[2]}",
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        timestamp = 1_700_000_000 + index
+        os.utime(release, (timestamp, timestamp))
+        releases.append(release)
+        image_refs.append(refs)
+
+    (deploy_root / "current").symlink_to(releases[0])
+    (deploy_root / ".previous-release").write_text(f"{releases[1]}\n", encoding="utf-8")
+    unrelated = "ghcr.io/example/unrelated:latest"
+    other_owner = f"ghcr.io/other/jobradarvn-backend:{'f' * 40}"
+    in_use = image_refs[2][0]
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_IMAGES": "\n".join(
+            [ref for refs in image_refs for ref in refs] + [unrelated, other_owner]
+        ),
+        "DOCKER_CONTAINER_IMAGES": in_use,
+        "DOCKER_LOG": str(docker_log),
+    }
+
+    subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "prune_production_releases.sh"),
+            str(deploy_root),
+            "3",
+        ],
+        check=True,
+        env=env,
+    )
+
+    for index in (0, 1, 4, 5, 6):
+        assert releases[index].is_dir()
+    for index in (2, 3):
+        assert not releases[index].exists()
+
+    log = docker_log.read_text(encoding="utf-8")
+    for index in (2, 3):
+        for ref in image_refs[index]:
+            if ref == in_use:
+                assert f"image rm {ref}" not in log
+            else:
+                assert f"image rm {ref}" in log
+    for index in (0, 1, 4, 5, 6):
+        for ref in image_refs[index]:
+            assert f"image rm {ref}" not in log
+    assert unrelated not in log
+    assert other_owner not in log
+    assert "image prune -f" in log
+
+
+def test_release_cleanup_aborts_before_deletion_on_unsafe_metadata(
+    tmp_path: Path,
+) -> None:
+    deploy_root = tmp_path / "deploy"
+    stale = _release(deploy_root, "release-stale")
+    current = _release(deploy_root, "release-current")
+    (current / ".env").write_text(
+        "BACKEND_IMAGE=ubuntu:latest\n"
+        f"ML_IMAGE=ghcr.io/example/jobradarvn-ml:{'a' * 40}\n"
+        f"WEB_IMAGE=ghcr.io/example/jobradarvn-web:{'b' * 40}\n",
+        encoding="utf-8",
+    )
+    os.utime(stale, (1_700_000_000, 1_700_000_000))
+    os.utime(current, (1_700_000_001, 1_700_000_001))
+    (deploy_root / "current").symlink_to(current)
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "prune_production_releases.sh"),
+            str(deploy_root),
+            "1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Unsafe production image reference" in result.stderr
+    assert current.is_dir()
+    assert stale.is_dir()
+
+
+def test_release_workflow_propagates_every_scraper_flag() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    for flag in (
+        "ENABLE_ITVIEC_SCRAPER",
+        "ENABLE_TOPCV_SCRAPER",
+        "ENABLE_VIETNAMWORKS_SCRAPER",
+    ):
+        assert f"{flag}: ${{{{ vars.{flag} || 'false' }}}}" in workflow
+        assert f'[[ "${flag}" =~ ^(true|false)$ ]]' in workflow
+        assert f"printf '{flag}=%s\\n' \"${flag}\"" in workflow
+
+    assert "scripts/prune_production_releases.sh" in workflow
+    assert (
+        "bash '$DEPLOY_ROOT/current/scripts/prune_production_releases.sh' '$DEPLOY_ROOT' 5"
+    ) in workflow
+
+    ci_workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert (
+        "docker://rhysd/actionlint@sha256:"
+        "b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667"
+    ) in ci_workflow
+
+
+def test_release_images_preserve_source_revision() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "build-args: SOURCE_REVISION=${{ env.RELEASE_SHA }}" in workflow
+    for dockerfile in ("Dockerfile", "Dockerfile.ml", "web/Dockerfile"):
+        contents = (PROJECT_ROOT / dockerfile).read_text(encoding="utf-8")
+        assert "ARG SOURCE_REVISION=local" in contents
+        assert "SOURCE_REVISION=$SOURCE_REVISION" in contents
+        assert "org.opencontainers.image.revision=$SOURCE_REVISION" in contents
+
+
+class _SmokeHandler(BaseHTTPRequestHandler):
+    paths: list[str] = []
+
+    def do_GET(self) -> None:  # noqa: N802
+        self.paths.append(self.path)
+        body = b'{"status":"ready"}' if self.path == "/health/ready" else b"{}"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+
+def test_production_smoke_checks_public_routes() -> None:
+    _SmokeHandler.paths = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _SmokeHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        subprocess.run(  # noqa: S603
+            [
+                str(PROJECT_ROOT / "scripts" / "production_smoke.sh"),
+                f"http://127.0.0.1:{server.server_port}",
+            ],
+            check=True,
+        )
+    finally:
+        server.shutdown()
+        thread.join()
+        server.server_close()
+
+    assert _SmokeHandler.paths == [
+        "/health/ready",
+        "/",
+        "/api/jobs?limit=1",
+        "/api/salary/bands",
+    ]
+
+
+def test_backup_loop_writes_complete_restricted_dump(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_pg_dump = fake_bin / "pg_dump"
+    fake_pg_dump.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'for argument in "$@"; do\n'
+        "  case $argument in --file=*) printf 'postgres-dump' > \"${argument#--file=}\";; esac\n"
+        "done\n",
+        encoding="utf-8",
+    )
+    fake_pg_dump.chmod(0o755)
+    backup_dir = tmp_path / "backups"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "BACKUP_DIR": str(backup_dir),
+        "BACKUP_RUN_ONCE": "true",
+    }
+
+    subprocess.run(  # noqa: S603
+        [str(PROJECT_ROOT / "scripts" / "backup_loop.sh")], check=True, env=env
+    )
+
+    dumps = list(backup_dir.glob("jobradarvn-*.dump"))
+    assert len(dumps) == 1
+    assert dumps[0].read_text(encoding="utf-8") == "postgres-dump"
+    assert dumps[0].stat().st_mode & 0o777 == 0o600
+    assert not list(backup_dir.glob("*.partial"))

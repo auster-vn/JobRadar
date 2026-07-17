@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "run_id": "c946348c8fea4834a295c3dfdc5e028c",
+  "source_revision": "local-verification-20260717-title-v2",
+  "metadata_sha256": "38d32b350779d77c506e2292d56f4dc506f473b07082372ce8f92abe697e3e3b",
+  "status": "rejected",
+  "failed_gates": [
+    "mape",
+    "data_readiness"
+  ],
+  "metrics": {
+    "test_mape": 0.3377975177870461,
+    "test_mae": 11999253.703488372,
+    "test_r2": -0.1130922818678275,
+    "baseline_mape": 0.4359906003821415,
+    "interval_coverage": 0.36046511627906974,
+    "train_size": 1115,
+    "test_size": 172,
+    "split_strategy": "temporal:2026-06-15",
+    "evaluation_unit": "individual_salary_midpoint",
+    "train_period_start": "2025-10-31",
+    "train_period_end": "2025-10-31",
+    "test_period_start": "2026-06-15",
+    "test_period_end": "2026-07-17",
+    "trained_at": "2026-07-17T16:22:39.253506+00:00"
+  },
+  "evaluation_diagnostics": {
+    "within_15pct_rate": 0.27906976744186046,
+    "p90_absolute_percentage_error": 0.6471363718095239,
+    "median_percentage_bias": -0.18862692,
+    "target_median": 27500000.0,
+    "prediction_median": 21304422.0,
+    "unseen_title_rate": 0.6976744186046512,
+    "unseen_location_rate": 0.046511627906976744
+  },
+  "data_readiness": {
+    "ready": false,
+    "sample_size": 1287,
+    "distinct_months": 3,
+    "canonical_technical_rows": 401,
+    "final_month": "2026-07",
+    "final_month_rows": 84,
+    "duplicate_source_keys": 0,
+    "non_vnd_rows": 0,
+    "qualified_segments": 2,
+    "segment_candidates": 85,
+    "underqualified_segments": 83
+  }
+}

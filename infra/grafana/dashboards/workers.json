@@ -1,0 +1,1 @@
+{"title":"JobRadar Workers","uid":"jobradar-workers","schemaVersion":41,"refresh":"15s","panels":[{"id":1,"type":"timeseries","title":"Queue backlog","gridPos":{"h":9,"w":24,"x":0,"y":0},"targets":[{"expr":"jobradar_celery_queue_length","legendFormat":"{{queue}}"}]}]}

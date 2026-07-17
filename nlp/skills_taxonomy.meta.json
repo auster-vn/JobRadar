@@ -1,0 +1,9 @@
+{
+  "version": "2026.07",
+  "entry_count": 3336,
+  "upstream": "MIND Tech Skills & Concepts Ontology",
+  "upstream_revision": "2367527d1a2f5665f595d6e0518294cc69dfb0fe",
+  "license": "MIT",
+  "source": "https://github.com/MIND-TechAI/MIND-tech-ontology",
+  "modified": true
+}

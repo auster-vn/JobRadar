@@ -1,0 +1,64 @@
+{
+  "title": "JobRadar Product",
+  "uid": "jobradar-product",
+  "schemaVersion": 41,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active alerts",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0},
+      "targets": [{"expr": "jobradar_active_alerts_total"}]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Salary model MAPE",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0},
+      "targets": [{"expr": "jobradar_salary_model_mape"}]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Salary interval coverage",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "targets": [{"expr": "jobradar_salary_model_interval_coverage"}]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Salary model published",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "targets": [{"expr": "jobradar_salary_model_published"}]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Salary data ready",
+      "gridPos": {"h": 8, "w": 6, "x": 0, "y": 8},
+      "targets": [{"expr": "jobradar_salary_data_ready"}]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Salary observation months",
+      "gridPos": {"h": 8, "w": 6, "x": 6, "y": 8},
+      "targets": [{"expr": "jobradar_salary_data_distinct_months"}]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Canonical salary rows",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 8},
+      "targets": [{"expr": "jobradar_salary_data_canonical_rows"}]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Latest month salary rows",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 8},
+      "targets": [{"expr": "jobradar_salary_data_final_month_rows"}]
+    }
+  ]
+}

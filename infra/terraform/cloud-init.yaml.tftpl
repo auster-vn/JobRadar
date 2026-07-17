@@ -1,0 +1,64 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+ssh_pwauth: false
+disable_root: true
+
+users:
+  - default
+  - name: ${deployment_user}
+    gecos: JobRadar deployment user
+    groups: [sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_public_key}
+
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+  - docker-compose-v2
+  - fail2ban
+  - unattended-upgrades
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-jobradar-hardening.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+      X11Forwarding no
+      AllowUsers ${deployment_user}
+  - path: /etc/fail2ban/jail.d/sshd.local
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [sshd]
+      enabled = true
+      maxretry = 5
+      bantime = 1h
+  - path: /etc/docker/daemon.json
+    owner: root:root
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "local",
+        "log-opts": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+
+runcmd:
+  - systemctl enable --now docker
+  - systemctl enable --now fail2ban
+  - systemctl enable --now unattended-upgrades
+  - usermod -aG docker ${deployment_user}
+  - install -d -o ${deployment_user} -g ${deployment_user} -m 0750 /opt/jobradarvn/releases
+  - install -d -o ${deployment_user} -g ${deployment_user} -m 0750 /srv/jobradar-backups
+  - systemctl restart ssh
+
+final_message: "JobRadar production host initialized"

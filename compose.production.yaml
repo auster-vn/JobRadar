@@ -1,0 +1,110 @@
+services:
+  db:
+    ports: !reset []
+    restart: unless-stopped
+
+  redis:
+    ports: !reset []
+    restart: unless-stopped
+
+  migrate:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+
+  api:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+      CORS_ORIGINS: https://${DOMAIN:?DOMAIN is required}
+      TRUST_PROXY_HEADERS: "true"
+    ports: !reset []
+    restart: unless-stopped
+
+  worker:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+    restart: unless-stopped
+
+  ml-worker:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+    restart: unless-stopped
+
+  ml-api:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+    restart: unless-stopped
+
+  beat:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+    restart: unless-stopped
+
+  mlflow:
+    ports: !reset []
+    restart: unless-stopped
+
+  web:
+    ports: !reset []
+    restart: unless-stopped
+
+  backup:
+    image: pgvector/pgvector:pg16
+    user: "0:0"
+    entrypoint: ["/usr/bin/env", "bash", "/usr/local/bin/backup_loop.sh"]
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: jobradarvn
+      PGUSER: jobradarvn
+      PGPASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./scripts/backup_loop.sh:/usr/local/bin/backup_loop.sh:ro
+      - ${BACKUP_DIR:-/srv/jobradar-backups}:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

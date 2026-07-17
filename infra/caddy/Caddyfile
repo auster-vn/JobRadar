@@ -1,0 +1,12 @@
+{$DOMAIN} {
+    encode zstd gzip
+
+    @backend path /api/* /health /health/* /version
+    reverse_proxy @backend api:8000
+    reverse_proxy web:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
