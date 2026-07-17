@@ -268,6 +268,15 @@ def test_release_images_preserve_source_revision() -> None:
         assert "org.opencontainers.image.revision=$SOURCE_REVISION" in contents
 
 
+def test_e2e_api_does_not_hold_the_uv_cache_lock_during_cleanup() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    e2e_job = workflow.split("  e2e:", maxsplit=1)[1].split("\n  ml-contract:", maxsplit=1)[0]
+
+    assert "enable-cache: false" in e2e_job
+    assert ".venv/bin/uvicorn api.main:app" in e2e_job
+    assert "uv run uvicorn" not in e2e_job
+
+
 class _SmokeHandler(BaseHTTPRequestHandler):
     paths: list[str] = []
 
