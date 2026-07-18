@@ -58,6 +58,12 @@ class EthicalHttpClient:
     async def __aexit__(self, *_: object) -> None:
         await self._client.aclose()
 
+    async def authorize(self, url: str) -> None:
+        """Apply robots policy and the shared domain delay before an external fetch."""
+        if not await self._robots.allowed(url):
+            raise RobotsDeniedError(f"robots.txt does not permit collection: {url}")
+        await self._limiter.wait(urlparse(url).netloc)
+
     @retry(
         retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
         stop=stop_after_attempt(3),
@@ -68,9 +74,7 @@ class EthicalHttpClient:
         cached = self._cache.get(url)
         if use_cache and cached and cached.expires_at > time.monotonic():
             return cached.body
-        if not await self._robots.allowed(url):
-            raise RobotsDeniedError(f"robots.txt does not permit collection: {url}")
-        await self._limiter.wait(urlparse(url).netloc)
+        await self.authorize(url)
         response = await self._client.get(url)
         response.raise_for_status()
         self._cache[url] = CachedResponse(response.text, time.monotonic() + self._cache_ttl)

@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     trust_proxy_headers: bool = False
     scraper_user_agent: str = "JobRadarVN-Research-Bot/1.0 (+https://jobradarvn.com/bot)"
+    scraper_contact_email: str = "bot@jobradarvn.com"
     enable_itviec_scraper: bool = False
     enable_topcv_scraper: bool = False
     enable_vietnamworks_scraper: bool = False

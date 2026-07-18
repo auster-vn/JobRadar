@@ -1,6 +1,7 @@
 import httpx
 import pytest
 
+from scrapers.common.browser import PlaywrightPageRenderer, browser_compatible_user_agent
 from scrapers.common.http_client import EthicalHttpClient, RobotsDeniedError
 from scrapers.common.rate_limiter import DomainRateLimiter
 from scrapers.common.robots import RobotsPolicy
@@ -40,6 +41,90 @@ async def test_rate_limiter_accepts_zero_interval() -> None:
     limiter = DomainRateLimiter(0)
     await limiter.wait("example.com")
     await limiter.wait("example.com")
+
+
+def test_browser_user_agent_retains_declared_bot_identity() -> None:
+    declared = "JobRadar-Test-Bot/1.0 (+https://example.com/bot)"
+
+    rendered = browser_compatible_user_agent(declared)
+
+    assert rendered.startswith("Mozilla/5.0")
+    assert rendered.endswith(declared)
+
+
+@pytest.mark.asyncio
+async def test_browser_renderer_rejects_non_allowlisted_url_before_launch() -> None:
+    renderer = PlaywrightPageRenderer(
+        "JobRadar-Test-Bot/1.0",
+        "bot@example.com",
+        allowed_hosts={"jobs.example.com"},
+    )
+
+    with pytest.raises(ValueError, match="outside the HTTPS source allowlist"):
+        await renderer.render(
+            "https://untrusted.example/private",
+            wait_for_selector=".job-card",
+        )
+
+
+@pytest.mark.asyncio
+async def test_browser_renderer_isolates_each_render_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakePage:
+        url = "https://jobs.example.com/listing"
+
+        async def goto(self, *_: object, **__: object) -> None:
+            return None
+
+        async def wait_for_selector(self, *_: object, **__: object) -> None:
+            return None
+
+        async def content(self) -> str:
+            return "<html>jobs</html>"
+
+    class FakeContext:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def new_page(self) -> FakePage:
+            return FakePage()
+
+        async def close(self) -> None:
+            self.closed = True
+
+    class FakeBrowser:
+        def __init__(self) -> None:
+            self.contexts: list[FakeContext] = []
+
+        async def new_context(self, **_: object) -> FakeContext:
+            context = FakeContext()
+            self.contexts.append(context)
+            return context
+
+    renderer = PlaywrightPageRenderer(
+        "JobRadar-Test-Bot/1.0",
+        "bot@example.com",
+        allowed_hosts={"jobs.example.com"},
+    )
+    browser = FakeBrowser()
+
+    async def get_browser() -> FakeBrowser:
+        return browser
+
+    monkeypatch.setattr(renderer, "_ensure_browser", get_browser)
+
+    for _ in range(2):
+        assert (
+            await renderer.render(
+                "https://jobs.example.com/listing",
+                wait_for_selector=".job-card",
+            )
+            == "<html>jobs</html>"
+        )
+
+    assert len(browser.contexts) == 2
+    assert all(context.closed for context in browser.contexts)
 
 
 @pytest.mark.asyncio

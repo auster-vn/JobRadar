@@ -36,7 +36,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.3.2
         with:
           enable-cache: true
-      - run: uv sync --extra dev --extra analytics --extra ml
+      - run: uv sync --extra dev --extra analytics --extra ml --extra scraping
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy api nlp scrapers workers ml flows scripts

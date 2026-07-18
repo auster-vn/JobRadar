@@ -85,6 +85,7 @@ jobs:
       SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
       SMTP_USER: ${{ secrets.SMTP_USER }}
       SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SCRAPER_CONTACT_EMAIL: ${{ vars.SCRAPER_CONTACT_EMAIL || 'bot@jobradarvn.com' }}
       ENABLE_ITVIEC_SCRAPER: ${{ vars.ENABLE_ITVIEC_SCRAPER || 'false' }}
       ENABLE_TOPCV_SCRAPER: ${{ vars.ENABLE_TOPCV_SCRAPER || 'false' }}
       ENABLE_VIETNAMWORKS_SCRAPER: ${{ vars.ENABLE_VIETNAMWORKS_SCRAPER || 'false' }}
@@ -118,7 +119,8 @@ jobs:
             "$CV_ENCRYPTION_KEY" \
             "$GRAFANA_ADMIN_USER" "$GRAFANA_ADMIN_PASSWORD" \
             "$LINKEDIN_ACCESS_TOKEN" "$TELEGRAM_BOT_TOKEN" "$SMTP_HOST" \
-            "$SMTP_PORT" "$SMTP_USER" "$SMTP_PASSWORD"; do
+            "$SMTP_PORT" "$SMTP_USER" "$SMTP_PASSWORD" \
+            "$SCRAPER_CONTACT_EMAIL"; do
             [[ "$value" =~ ^[A-Za-z0-9._~@:/+-]*$ ]] || {
               echo "Deployment values must use URL-safe, newline-free characters" >&2
               exit 1
@@ -169,6 +171,7 @@ jobs:
             printf 'SMTP_PORT=%s\n' "$SMTP_PORT"
             printf 'SMTP_USER=%s\n' "$SMTP_USER"
             printf 'SMTP_PASSWORD=%s\n' "$SMTP_PASSWORD"
+            printf 'SCRAPER_CONTACT_EMAIL=%s\n' "$SCRAPER_CONTACT_EMAIL"
             printf 'ENABLE_ITVIEC_SCRAPER=%s\n' "$ENABLE_ITVIEC_SCRAPER"
             printf 'ENABLE_TOPCV_SCRAPER=%s\n' "$ENABLE_TOPCV_SCRAPER"
             printf 'ENABLE_VIETNAMWORKS_SCRAPER=%s\n' "$ENABLE_VIETNAMWORKS_SCRAPER"

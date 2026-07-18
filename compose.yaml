@@ -42,6 +42,8 @@ services:
       ADMIN_API_KEY: ${ADMIN_API_KEY:-development-admin-key}
       CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:-development-cv-encryption-key-change-me}
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      SCRAPER_USER_AGENT: ${SCRAPER_USER_AGENT:-JobRadarVN-Research-Bot/1.0 (+https://jobradarvn.com/bot)}
+      SCRAPER_CONTACT_EMAIL: ${SCRAPER_CONTACT_EMAIL:-bot@jobradarvn.com}
       ENABLE_ITVIEC_SCRAPER: ${ENABLE_ITVIEC_SCRAPER:-false}
       ENABLE_TOPCV_SCRAPER: ${ENABLE_TOPCV_SCRAPER:-false}
       ENABLE_VIETNAMWORKS_SCRAPER: ${ENABLE_VIETNAMWORKS_SCRAPER:-false}
@@ -99,6 +101,7 @@ services:
     image: ${BACKEND_IMAGE:-jobradarvn-backend:latest}
     command: celery -A workers.celery_app worker -Q alerts,scraping --concurrency=4 --loglevel=info
     environment: *backend-env
+    shm_size: "512mb"
     depends_on:
       migrate:
         condition: service_completed_successfully

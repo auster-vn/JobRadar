@@ -238,6 +238,9 @@ def test_release_cleanup_aborts_before_deletion_on_unsafe_metadata(
 def test_release_workflow_propagates_every_scraper_flag() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
+    assert "SCRAPER_CONTACT_EMAIL: ${{ vars.SCRAPER_CONTACT_EMAIL" in workflow
+    assert "printf 'SCRAPER_CONTACT_EMAIL=%s\\n' \"$SCRAPER_CONTACT_EMAIL\"" in workflow
+
     for flag in (
         "ENABLE_ITVIEC_SCRAPER",
         "ENABLE_TOPCV_SCRAPER",

@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import ColumnElement, Text, and_, cast, func, or_, select, text, tuple_
@@ -24,6 +24,7 @@ async def list_jobs(
     level: str | None = None,
     location: str | None = None,
     skill: str | None = None,
+    platform: Literal["itviec", "topcv", "vietnamworks", "linkedin"] | None = None,
     remote: bool | None = None,
     salary_min: Annotated[int | None, Query(ge=0)] = None,
     cursor: str | None = None,
@@ -40,6 +41,8 @@ async def list_jobs(
         filters.append(Job.location.contains([location]))
     if skill:
         filters.append(Job.skills_required.contains([skill]))
+    if platform:
+        filters.append(Job.platform == platform)
     if remote is True:
         filters.append(or_(Job.job_type == "remote", Job.location.contains(["Remote"])))
     if salary_min is not None:

@@ -10,7 +10,7 @@ from api.models import Job, RawJob, ScrapeBatch
 from ml.salary.readiness import assess_salary_data_readiness
 from ml.salary.training import load_salary_rows
 from workers.ml_tasks import retrain_salary_model
-from workers.scrape_tasks import scrape_itviec, scrape_vietnamworks
+from workers.scrape_tasks import scrape_itviec, scrape_topcv, scrape_vietnamworks
 
 router = APIRouter(
     prefix="/api/admin",
@@ -22,15 +22,16 @@ Session = Annotated[AsyncSession, Depends(get_session)]
 
 @router.post("/scrape/trigger", status_code=status.HTTP_202_ACCEPTED)
 async def trigger_scrape(
-    platform: Literal["itviec", "vietnamworks"],
+    platform: Literal["itviec", "topcv", "vietnamworks"],
     pages: Annotated[int, Query(ge=1, le=50)] = 20,
     detail_limit: Annotated[int, Query(ge=0, le=100)] = 25,
 ) -> dict[str, str]:
-    result = (
-        scrape_itviec.delay(pages=pages, detail_limit=detail_limit)
-        if platform == "itviec"
-        else scrape_vietnamworks.delay(max_pages=min(pages, 10))
-    )
+    if platform == "itviec":
+        result = scrape_itviec.delay(pages=pages, detail_limit=detail_limit)
+    elif platform == "topcv":
+        result = scrape_topcv.delay(max_pages=min(pages, 10))
+    else:
+        result = scrape_vietnamworks.delay(max_pages=min(pages, 10))
     return {"status": "queued", "task_id": result.id, "platform": platform}
 
 

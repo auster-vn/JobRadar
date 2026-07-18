@@ -29,6 +29,11 @@ async def test_authenticated_user_workflow(monkeypatch: pytest.MonkeyPatch) -> N
         assert (await client.get("/health")).status_code == 200
         assert (await client.get("/health/ready")).status_code == 200
         assert (await client.get("/api/jobs?limit=5")).status_code == 200
+        topcv_jobs = await client.get("/api/jobs?platform=topcv&limit=5")
+        assert topcv_jobs.status_code == 200
+        assert topcv_jobs.json()["data"]
+        assert all(job["platform"] == "topcv" for job in topcv_jobs.json()["data"])
+        assert (await client.get("/api/jobs?platform=unsupported")).status_code == 422
         jobs = (await client.get("/api/jobs?limit=1")).json()["data"]
         assert (await client.get("/api/jobs/trending?limit=5")).status_code == 200
         if jobs:

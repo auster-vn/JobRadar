@@ -1,8 +1,33 @@
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
 from api.routers import admin
+
+
+@pytest.mark.asyncio
+async def test_admin_can_queue_bounded_topcv_scrape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[dict[str, int]] = []
+
+    class FakeTask:
+        @staticmethod
+        def delay(**kwargs: int) -> SimpleNamespace:
+            calls.append(kwargs)
+            return SimpleNamespace(id="topcv-task-id")
+
+    monkeypatch.setattr(admin, "scrape_topcv", FakeTask())
+
+    response = await admin.trigger_scrape("topcv", pages=50)
+
+    assert response == {
+        "status": "queued",
+        "task_id": "topcv-task-id",
+        "platform": "topcv",
+    }
+    assert calls == [{"max_pages": 10}]
 
 
 @pytest.mark.asyncio

@@ -5,7 +5,9 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir uv==0.9.7
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-project --extra scraping
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN .venv/bin/playwright install --with-deps --only-shell chromium
 COPY api api
 COPY nlp nlp
 COPY scrapers scrapers
@@ -16,7 +18,7 @@ COPY scripts scripts
 COPY data data
 COPY migrations migrations
 COPY alembic.ini ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra scraping
 RUN groupadd --system jobradar && useradd --system --gid jobradar --home /app jobradar \
     && chown -R jobradar:jobradar /app
 
