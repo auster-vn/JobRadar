@@ -15,7 +15,7 @@ runtime behavior was exercised; source files alone are not accepted as evidence.
 | `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
 | Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
 | dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 186 unit/integration tests pass with 80.53% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
+| Unit coverage at least 60% | Pass | 188 unit/integration tests pass with 80.74% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
 | Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
 
 MVP functionality and checkpoint verification are complete. Release gates that
@@ -112,22 +112,22 @@ into GitHub Actions.
     non-temporal/undersized holdouts, MAPE above 15%, failed readiness and local
     source revisions. A syntactically valid SHA must also identify a real commit
     reachable from the checked-out `HEAD`; CI fetches full history for this
-    provenance check. The current evidence intentionally fails MAPE, readiness
-    and committed-provenance checks, so automatic release cannot claim the open
+    provenance check. The current evidence passes provenance and intentionally
+    fails only MAPE and readiness, so automatic release cannot claim the open
     Phase 3 gate.
 14. GitHub Actions run
-    [`29636260665`](https://github.com/auster-vn/JobRadar/actions/runs/29636260665)
-    at commit `b6ae6418eb661cf19fbcff7f61b58a6995db8544` passed backend,
+    [`29650889285`](https://github.com/auster-vn/JobRadar/actions/runs/29650889285)
+    at commit `a6d2a99857d5ad039ab80340198b4fa3b884d2a8` passed backend,
     frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
     container builds. Its overall result is correctly failed only by
     `ml-publication`; dependent release run
-    [`29636514279`](https://github.com/auster-vn/JobRadar/actions/runs/29636514279)
+    [`29651126441`](https://github.com/auster-vn/JobRadar/actions/runs/29651126441)
     was skipped rather than publishing an ineligible model or deployment.
 15. PostgreSQL regression coverage now scrapes the same source posting twice:
     first with a disclosed 20-30 million VND range and then with compensation
     omitted and a later posting date. Ingestion keeps the disclosed range and
     earliest `posted_at` while updating current listing metadata. The run above
-    passed this case among 186 tests with 80.53% coverage and dbt 32/32.
+    passed this case among 188 tests with 80.74% coverage and dbt 32/32.
 16. On 2026-07-18 the rebuilt ingestion image completed a live ten-page
     VietnamWorks batch with 414 jobs, zero errors, zero new rows and 414 updates.
     The operational database remained at 462 unique VietnamWorks
@@ -136,6 +136,11 @@ into GitHub Actions.
     recreated with the reviewed adapter enabled; API, ML API, PostgreSQL, Redis,
     Prometheus and Grafana health checks plus all three local Playwright workflows
     passed.
+17. `compose.collector.yaml` applies `restart: unless-stopped` to the nine
+    long-running collection services while keeping migration and salary import
+    one-shot. CI resolves and validates the merged configuration, and the live
+    stack was recreated with that policy before its public-route smoke test
+    passed through `http://localhost:3000`.
 
 ## Release Gates Still Open
 
@@ -241,7 +246,7 @@ monthly periods or be bundled into this product as a readiness shortcut.
 - Version-control bootstrap is complete: private repository
   [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
   `main`; the latest fully audited code baseline is
-  `b6ae6418eb661cf19fbcff7f61b58a6995db8544`. The CI evidence is listed above;
+  `a6d2a99857d5ad039ab80340198b4fa3b884d2a8`. The CI evidence is listed above;
   release remains intentionally blocked by the salary publication job, not by
   missing repository history.
 - TopCV returned one complete 46-card, seven-page Software Engineering listing
