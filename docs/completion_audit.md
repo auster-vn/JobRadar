@@ -15,7 +15,7 @@ runtime behavior was exercised; source files alone are not accepted as evidence.
 | `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
 | Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
 | dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 183 unit/integration tests pass with 80.83% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
+| Unit coverage at least 60% | Pass | 185 unit/integration tests pass with 80.49% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
 | Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
 
 MVP functionality and checkpoint verification are complete. Release gates that
@@ -116,12 +116,12 @@ into GitHub Actions.
     and committed-provenance checks, so automatic release cannot claim the open
     Phase 3 gate.
 14. GitHub Actions run
-    [`29603258795`](https://github.com/auster-vn/JobRadar/actions/runs/29603258795)
-    at commit `26abc4b2767d84461cf42687164b6cb34eb30978` passed backend,
+    [`29634554921`](https://github.com/auster-vn/JobRadar/actions/runs/29634554921)
+    at commit `847afa99ddb80b448f9e1605f33afc5da545cfce` passed backend,
     frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
     container builds. Its overall result is correctly failed only by
     `ml-publication`; dependent release run
-    [`29603989153`](https://github.com/auster-vn/JobRadar/actions/runs/29603989153)
+    [`29634790708`](https://github.com/auster-vn/JobRadar/actions/runs/29634790708)
     was skipped rather than publishing an ineligible model or deployment.
 
 ## Release Gates Still Open
@@ -220,7 +220,7 @@ monthly periods or be bundled into this product as a readiness shortcut.
 
 - Version-control bootstrap is complete: private repository
   [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
-  `main` baseline at `26abc4b2767d84461cf42687164b6cb34eb30978`. The latest CI
+  `main` baseline at `847afa99ddb80b448f9e1605f33afc5da545cfce`. The audited CI
   evidence is listed above; release remains intentionally blocked by the salary
   publication job, not by missing repository history.
 - TopCV returned one complete 46-card, seven-page Software Engineering listing
