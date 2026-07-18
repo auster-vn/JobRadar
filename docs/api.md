@@ -15,8 +15,8 @@ is intended for browser bootstrap; `GET /api/auth/me` remains protected.
 
 ## Public market API
 
-- `GET /api/jobs`: cursor-paginated jobs with title, skill, location, level and
-  salary filters.
+- `GET /api/jobs`: cursor-paginated jobs with title, skill, location, level,
+  salary and `platform` filters.
 - `GET /api/jobs/{id}`: normalized job detail and source provenance.
 - `GET /api/jobs/{id}/similar`: nearest active jobs by pgvector cosine distance.
 - `GET /api/jobs/trending`: jobs posted during the last seven days.
@@ -46,9 +46,10 @@ is intended for browser bootstrap; `GET /api/auth/me` remains protected.
 ## Operations API
 
 Routes under `/api/admin` require `X-Admin-Key`. They expose pipeline counts,
-scrape batches, queued scrape triggers, salary data readiness and retraining. Never expose this
-key to browser code. `/health`, `/health/ready`, `/version` and `/metrics` support
-container orchestration and monitoring.
+scrape batches, queued ITViec, TopCV and VietnamWorks triggers, salary data
+readiness and retraining. Never expose this key to browser code. `/health`,
+`/health/ready`, `/version` and `/metrics` support container orchestration and
+monitoring.
 
 Anonymous and authenticated clients have separate Redis-backed fixed-window
 limits. A limited response is HTTP 429 and includes `Retry-After`. The limiter

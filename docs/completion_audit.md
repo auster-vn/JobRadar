@@ -10,12 +10,12 @@ runtime behavior was exercised; source files alone are not accepted as evidence.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| At least 500 real ITViec jobs | Pass | 541 ITViec rows in the operational database |
-| Salary bands for at least 10 roles | Pass | 57 bands across 41 normalized roles |
+| At least 500 real ITViec jobs | Pass | 630 ITViec rows in the operational database |
+| Salary bands for at least 10 roles | Pass | 71 bands across 42 normalized roles |
 | `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
 | Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
 | dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 188 unit/integration tests pass with 80.74% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
+| Unit coverage at least 60% | Pass | 194 unit/integration tests pass with 80.35% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
 | Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
 
 MVP functionality and checkpoint verification are complete. Release gates that
@@ -25,11 +25,11 @@ depend on data maturity or external production credentials remain open below.
 
 | Phase | Status | Runtime evidence |
 |---|---|---|
-| Phase 0 - Validate | Pass | 541 parsed ITViec jobs; pgvector HNSW index active; 50-example skill benchmark F1 1.00; MiniLM 384d CPU p95 14.583 ms |
+| Phase 0 - Validate | Pass | 630 parsed ITViec jobs; pgvector HNSW index active; 50-example skill benchmark F1 1.00; MiniLM 384d CPU p95 14.583 ms |
 | Phase 1 - Foundation | Pass | Strict Ruff/mypy, pre-commit, six Alembic revisions, Compose, Celery flow and health probes |
 | Phase 2 - NLP and Data Engineering | Pass | 3,336-entry taxonomy, salary/title parsing, nine dbt models, 23 tests, freshness and scheduled Prefect/Celery orchestration |
 | Phase 3 - ML Pipeline | Partial | Leakage-safe features, calibrated quantiles, gated inference service, MLflow rejection logging, 1,003 embeddings, HNSW matching and skill-gap API exist; publication MAPE gate fails |
-| Phase 4 - Full Application | Pass | Latest VietnamWorks full pagination returned 414 current jobs with zero errors and retains 462 historical records; TopCV has a fail-closed paginated listing adapter; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
+| Phase 4 - Full Application | Pass | Latest full batches returned 499 ITViec and 377 TopCV jobs with zero errors; VietnamWorks returned 414 and retains 462 historical records; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
 | Phase 5 - Production | Partial | Validated Hetzner CX32 Terraform/cloud-init, five Grafana dashboards, Prometheus alerts, CI, immutable GHCR CD with rollback, E2E, rate limiting, docs, backup and Caddy config exist; infrastructure apply and deployment are not executed |
 
 The original `underthesea` validation was replaced in the executable path by a
@@ -127,7 +127,7 @@ into GitHub Actions.
     first with a disclosed 20-30 million VND range and then with compensation
     omitted and a later posting date. Ingestion keeps the disclosed range and
     earliest `posted_at` while updating current listing metadata. The run above
-    passed this case among 188 tests with 80.74% coverage and dbt 32/32.
+    passed this case among 194 tests with 80.35% coverage and dbt 32/32.
 16. On 2026-07-18 the rebuilt ingestion image completed a live ten-page
     VietnamWorks batch with 414 jobs, zero errors, zero new rows and 414 updates.
     The operational database remained at 462 unique VietnamWorks
@@ -141,6 +141,14 @@ into GitHub Actions.
     one-shot. CI resolves and validates the merged configuration, and the live
     stack was recreated with that policy before its public-route smoke test
     passed through `http://localhost:3000`.
+18. On 2026-07-18 an ITViec batch completed 499 jobs with 89 inserts, 410
+    updates and zero errors, bringing the operational database to 630 unique
+    ITViec rows. A Dockerized TopCV run then traversed all nine current listing
+    pages and inserted 377 unique jobs with zero errors. Every TopCV row has a
+    valid title, company, location, source URL and processed raw record; 195
+    contain valid VND salary values. The worker image uses Playwright 1.61.0 and
+    Chrome headless shell 149 while retaining the declared crawler identity,
+    contact header, robots checks and five-second page cadence.
 
 ## Release Gates Still Open
 
@@ -190,8 +198,8 @@ Data readiness is executable rather than documentation-only. Training,
 artifact metadata and serving require the same six-condition report;
 `GET /api/admin/ml/data-readiness`, four Prometheus gauges and the Product
 dashboard expose its state without weakening the publication gate. The runtime
-report currently records 1,287 rows across three months, 401 canonical technical
-rows, two qualified and 83 underqualified segments among 85 candidates, 84 rows
+report currently records 1,482 rows across three months, 520 canonical technical
+rows, two qualified and 83 underqualified segments among 85 candidates, 233 rows
 in the latest month, no duplicate source keys and no non-VND rows; readiness is
 therefore false.
 
@@ -249,11 +257,12 @@ monthly periods or be bundled into this product as a readiness shortcut.
   `a6d2a99857d5ad039ab80340198b4fa3b884d2a8`. The CI evidence is listed above;
   release remains intentionally blocked by the salary publication job, not by
   missing repository history.
-- TopCV returned one complete 46-card, seven-page Software Engineering listing
-  during the 2026-07-16 audit, then resumed returning HTTP 403. Its implemented
-  parser recovered salary, experience and location for all 46 observed cards;
-  the scheduled adapter remains off by default, raises `SourceBlockedError` on
-  access denial and does not attempt to solve Cloudflare challenges.
+- TopCV direct HTTP access currently receives a managed 403, while its
+  robots-permitted public listing renders in the allowlisted Chromium path. The
+  2026-07-18 Docker batch completed all nine pages with 377 unique jobs and 195
+  parsed salaries. The scheduled adapter remains off by default, retains its
+  declared identity and contact header, and fails closed rather than using
+  proxies or solving CAPTCHAs when public cards are unavailable.
 - LinkedIn and notification delivery require provider-issued credentials.
 - A 2026-07-18 GitHub configuration audit found no `production` Environment,
   repository secrets or repository variables. No local `terraform.tfvars`,

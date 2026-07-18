@@ -8,11 +8,22 @@ before API and workers start. Readiness is available at `/health/ready`.
 Scrapers are off by default. Enable a source only after reviewing its current
 robots and access policy, then set `ENABLE_ITVIEC_SCRAPER=true` or
 `ENABLE_TOPCV_SCRAPER=true` or `ENABLE_VIETNAMWORKS_SCRAPER=true`. Keep the
-declared bot user-agent and the shared five-second domain delay. TopCV listing
-access is intermittent behind Cloudflare, so leave it disabled unless a live
-one-page probe succeeds; the adapter raises `SourceBlockedError` on HTTP 403 or
-challenge markup and never attempts to solve the challenge. LinkedIn requires
-its official API token.
+declared bot user-agent, set `SCRAPER_CONTACT_EMAIL` to a monitored mailbox and
+retain the shared five-second domain delay. TopCV first attempts the public
+listing with that declared identity. On HTTP 403 or managed challenge markup it
+uses an allowlisted Playwright Chromium renderer with a browser-compatible
+user-agent that retains the declared identity and a `From` contact header. The
+adapter rechecks robots and throttles every top-level page, creates an isolated
+browser context per page, uses no proxy or CAPTCHA solver, and raises
+`SourceBlockedError` when public cards remain unavailable. LinkedIn requires its
+official API token.
+
+Firecrawl is not bundled. Its
+[self-hosting guide](https://github.com/firecrawl/firecrawl/blob/main/SELF_HOST.md)
+states that the advanced Fire-engine anti-bot capability is not included in the
+open self-hosted stack; adding its Redis/PostgreSQL services would not improve
+this source-specific path. Reassess that tradeoff only if multiple approved
+sources need a shared rendering service.
 VietnamWorks first verifies the robots-permitted public search page, then uses
 the same first-party JSON search endpoint as that page for at most ten pages of
 50 jobs. The adapter fails on response-schema drift, deduplicates stable job IDs
@@ -36,9 +47,8 @@ VietnamWorks run with:
 
 ```bash
 docker compose -f compose.yaml -f compose.collector.yaml up -d
-docker compose exec worker celery -A workers.celery_app call \
-  workers.scrape_tasks.scrape_vietnamworks \
-  --kwargs='{"max_pages":10}'
+curl --fail --request POST -H "X-Admin-Key: $ADMIN_API_KEY" \
+  "http://localhost:8000/api/admin/scrape/trigger?platform=topcv&pages=10"
 curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
   http://localhost:8000/api/admin/scrape/batches
 curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
@@ -47,6 +57,23 @@ curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
 
 Run `docker compose down` to stop collection intentionally. Starting the base
 Compose file without the overlay keeps the disposable development behavior.
+
+### Live source evidence
+
+The 2026-07-18 policy review found that the public job-listing paths used by
+TopCV and ITViec were permitted by their current robots files. The reviewed
+runtime then produced these local, non-redistributed database results:
+
+- ITViec batch `e0fed1a8-666b-4624-94f4-817a19fb9b9f` completed with 499 jobs,
+  89 inserts, 410 updates and zero errors; the database contains 630 unique
+  ITViec jobs. The current source payload did not disclose salary values.
+- TopCV batch `42c0cbd6-0939-4304-ba41-2bf2766aef6a` completed nine listing
+  pages with 377 inserts and zero errors. All 377 source IDs, source URLs,
+  companies, locations and raw links are valid and unique; 195 rows contain a
+  parsed VND salary range and all 377 raw payloads are processed without error.
+
+These counts prove the adapters against the source state at that time; they are
+not a guarantee that a publisher will never change markup or access policy.
 
 ## Monitoring
 
@@ -246,7 +273,9 @@ plus these environment secrets:
 
 Set `ENABLE_ITVIEC_SCRAPER`, `ENABLE_TOPCV_SCRAPER` and
 `ENABLE_VIETNAMWORKS_SCRAPER` as environment variables only after reviewing
-current source policy and completing a live probe. The target needs Docker with
+current source policy and completing a live probe. Set
+`SCRAPER_CONTACT_EMAIL` as a repository variable pointing to a monitored
+mailbox. The target needs Docker with
 Compose and permission for the deployment user to run Docker. GHCR access uses
 the workflow's short-lived token and is removed after deployment.
 

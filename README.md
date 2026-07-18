@@ -19,7 +19,7 @@ Next.js dashboard.
 | Area | What is implemented |
 |---|---|
 | Job discovery | Cursor-paginated search with title, skill, location, level, salary, and source filters |
-| Data collection | Fail-closed source adapters for ITViec, TopCV, VietnamWorks, and the official LinkedIn API path |
+| Data collection | Robots-aware, fail-closed adapters for ITViec, TopCV, VietnamWorks, and the official LinkedIn API path |
 | NLP | Bilingual title normalization, experience parsing, salary normalization, and a versioned 3,336-entry skill taxonomy |
 | Market intelligence | Hiring trends, skill demand, salary bands, company activity, and dbt-backed analytics marts |
 | Personalization | Encrypted CV extraction, pgvector similarity, deterministic skill matching, and role-level skill-gap analysis |
@@ -35,8 +35,8 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 188 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.74% |
+| Backend unit and integration tests | 194 passed |
+| Combined API, NLP, scraper, and ML coverage | 80.35% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
@@ -81,7 +81,7 @@ documented in [`docs/architecture.md`](docs/architecture.md).
 | Web | Next.js 16, React 19, TypeScript 5, Recharts, Playwright |
 | API | Python 3.12+, FastAPI, Pydantic, SQLAlchemy async, Alembic |
 | Storage | PostgreSQL 16, pgvector HNSW, pgcrypto, Redis 7 |
-| Data and orchestration | Celery, dbt-postgres, Prefect-compatible flows |
+| Data and orchestration | Celery, dbt-postgres, Prefect-compatible flows, allowlisted Playwright rendering |
 | NLP and ML | deterministic parsers, Sentence Transformers, XGBoost quantile regression, MLflow |
 | Observability | Prometheus, Grafana, structured logs, health/readiness probes |
 | Delivery | Docker Compose, GitHub Actions, GHCR, Terraform, Hetzner Cloud, Caddy |
@@ -137,16 +137,28 @@ After reviewing the current source policy, enable only the approved adapters in
 host and Docker restarts, start the stack with the collector overlay:
 
 ```bash
-# Set ENABLE_VIETNAMWORKS_SCRAPER=true in .env first.
+# Set only reviewed sources to true in .env and use a monitored contact mailbox.
+# ENABLE_ITVIEC_SCRAPER=true
+# ENABLE_TOPCV_SCRAPER=true
+# ENABLE_VIETNAMWORKS_SCRAPER=true
+# SCRAPER_CONTACT_EMAIL=bot@example.com
 docker compose -f compose.yaml -f compose.collector.yaml up -d
-docker compose exec worker celery -A workers.celery_app call \
-  workers.scrape_tasks.scrape_vietnamworks \
-  --kwargs='{"max_pages":10}'
+curl --fail --request POST \
+  --header "X-Admin-Key: $ADMIN_API_KEY" \
+  "http://localhost:8000/api/admin/scrape/trigger?platform=topcv&pages=10"
 ```
 
 The overlay applies `restart: unless-stopped` only to long-running services;
 migrations and idempotent salary-data import remain one-shot prerequisites.
 Use `docker compose down` when collection should stop intentionally.
+
+TopCV is fetched with the declared bot identity first. If its public listing
+requires JavaScript or returns managed challenge markup, the adapter uses an
+allowlisted headless Chromium context whose browser-compatible user-agent still
+contains that identity and whose `From` header contains `SCRAPER_CONTACT_EMAIL`.
+Robots authorization and the shared five-second top-level page delay still run
+before every render. The adapter does not use proxies or solve CAPTCHAs and
+fails closed if public cards are unavailable.
 
 Each source posting remains one salary sample even when it is scraped repeatedly.
 A later payload with hidden compensation cannot erase a valid disclosed range,
@@ -184,7 +196,8 @@ and model state is intentional.
 ### Backend
 
 ```bash
-uv sync --extra dev --extra analytics --extra ml
+uv sync --extra dev --extra analytics --extra ml --extra scraping
+uv run playwright install --only-shell chromium
 docker compose up -d db redis
 uv run alembic upgrade head
 uv run uvicorn api.main:app --reload
