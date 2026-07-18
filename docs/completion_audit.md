@@ -29,7 +29,7 @@ depend on data maturity or external production credentials remain open below.
 | Phase 1 - Foundation | Pass | Strict Ruff/mypy, pre-commit, six Alembic revisions, Compose, Celery flow and health probes |
 | Phase 2 - NLP and Data Engineering | Pass | 3,336-entry taxonomy, salary/title parsing, nine dbt models, 23 tests, freshness and scheduled Prefect/Celery orchestration |
 | Phase 3 - ML Pipeline | Partial | Leakage-safe features, calibrated quantiles, gated inference service, MLflow rejection logging, 1,003 embeddings, HNSW matching and skill-gap API exist; publication MAPE gate fails |
-| Phase 4 - Full Application | Pass | VietnamWorks full pagination returned 425 current jobs and retains 462 historical records; TopCV has a fail-closed paginated listing adapter; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
+| Phase 4 - Full Application | Pass | Latest VietnamWorks full pagination returned 414 current jobs with zero errors and retains 462 historical records; TopCV has a fail-closed paginated listing adapter; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
 | Phase 5 - Production | Partial | Validated Hetzner CX32 Terraform/cloud-init, five Grafana dashboards, Prometheus alerts, CI, immutable GHCR CD with rollback, E2E, rate limiting, docs, backup and Caddy config exist; infrastructure apply and deployment are not executed |
 
 The original `underthesea` validation was replaced in the executable path by a
@@ -97,11 +97,11 @@ into GitHub Actions.
     retained the row; revision `005` excluded it; re-upgrade restored it without
     dropping downstream views.
 11. The release SHA is embedded in backend, ML and web images as both
-    `SOURCE_REVISION` and the OCI revision label. MLflow run
-    `c946348c8fea4834a295c3dfdc5e028c` captured source revision
-    `local-verification-20260717-title-v2` through the
-    production Celery path; a deployment contract test and actionlint protect
-    the build-argument wiring.
+    `SOURCE_REVISION` and the OCI revision label. The current ML image was rebuilt
+    from `b6ae6418eb661cf19fbcff7f61b58a6995db8544`, and MLflow run
+    `b4d7b96c9ed2449484411cfdf278a6ba` captured that exact committed revision
+    through the production Celery path. A deployment contract test and
+    actionlint protect the build-argument wiring.
 12. A production-path retrain exposed a full Docker overlay filesystem. Removing
     only dangling images reclaimed 32.21 GB and restored 32 GB free. Cloud-init
     now bounds container logs at three 10 MB files, deployment requires 10 GiB
@@ -116,18 +116,26 @@ into GitHub Actions.
     and committed-provenance checks, so automatic release cannot claim the open
     Phase 3 gate.
 14. GitHub Actions run
-    [`29635917668`](https://github.com/auster-vn/JobRadar/actions/runs/29635917668)
-    at commit `b5280e4c5451f03e2aecedb16cf5b2864d0cb0f4` passed backend,
+    [`29636260665`](https://github.com/auster-vn/JobRadar/actions/runs/29636260665)
+    at commit `b6ae6418eb661cf19fbcff7f61b58a6995db8544` passed backend,
     frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
     container builds. Its overall result is correctly failed only by
     `ml-publication`; dependent release run
-    [`29636153376`](https://github.com/auster-vn/JobRadar/actions/runs/29636153376)
+    [`29636514279`](https://github.com/auster-vn/JobRadar/actions/runs/29636514279)
     was skipped rather than publishing an ineligible model or deployment.
 15. PostgreSQL regression coverage now scrapes the same source posting twice:
     first with a disclosed 20-30 million VND range and then with compensation
     omitted and a later posting date. Ingestion keeps the disclosed range and
     earliest `posted_at` while updating current listing metadata. The run above
     passed this case among 186 tests with 80.53% coverage and dbt 32/32.
+16. On 2026-07-18 the rebuilt ingestion image completed a live ten-page
+    VietnamWorks batch with 414 jobs, zero errors, zero new rows and 414 updates.
+    The operational database remained at 462 unique VietnamWorks
+    records and retained all 172 previously disclosed salaries after the current
+    payload omitted some compensation. Worker and Celery Beat were then
+    recreated with the reviewed adapter enabled; API, ML API, PostgreSQL, Redis,
+    Prometheus and Grafana health checks plus all three local Playwright workflows
+    passed.
 
 ## Release Gates Still Open
 
@@ -157,11 +165,12 @@ selection.
 | Baseline MAPE | 43.60% | training-median baseline |
 | P25-P75 coverage | 36.05% | train-only OOF calibrated diagnostic |
 
-MLflow run `c946348c8fea4834a295c3dfdc5e028c` is tagged `rejected`; no candidate
-artifact is published as the current model. The internal model service reports
-`model_available=false`, and the salary API safely uses observed market
-quantiles with source and period provenance or its cold-start fallback while
-this gate remains open. The exact compact input enforced by CI is
+MLflow run `b4d7b96c9ed2449484411cfdf278a6ba` is tagged `rejected` and records the
+committed source revision `b6ae6418eb661cf19fbcff7f61b58a6995db8544`; no
+candidate artifact is published as the current model. The internal model service
+reports `model_available=false`, and the salary API safely uses observed market
+quantiles with source and period provenance or its cold-start fallback while this
+gate remains open. The exact compact input enforced by CI is
 [`docs/evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
 Post-prediction diagnostics are persisted with the rejected artifact: 27.91% of
@@ -231,9 +240,10 @@ monthly periods or be bundled into this product as a readiness shortcut.
 
 - Version-control bootstrap is complete: private repository
   [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
-  `main` baseline through `b5280e4c5451f03e2aecedb16cf5b2864d0cb0f4`. The audited CI
-  evidence is listed above; release remains intentionally blocked by the salary
-  publication job, not by missing repository history.
+  `main`; the latest fully audited code baseline is
+  `b6ae6418eb661cf19fbcff7f61b58a6995db8544`. The CI evidence is listed above;
+  release remains intentionally blocked by the salary publication job, not by
+  missing repository history.
 - TopCV returned one complete 46-card, seven-page Software Engineering listing
   during the 2026-07-16 audit, then resumed returning HTTP 403. Its implemented
   parser recovered salary, experience and location for all 46 observed cards;
@@ -243,9 +253,10 @@ monthly periods or be bundled into this product as a readiness shortcut.
 - A 2026-07-18 GitHub configuration audit found no `production` Environment,
   repository secrets or repository variables. No local `terraform.tfvars`,
   Terraform backend configuration or production `.env` is present either.
-  Consequently, no durable production database, worker or Celery Beat process
-  is currently running to accumulate the approved daily scraper observations.
-  Hetzner deployment therefore requires an owner-approved `HCLOUD_TOKEN` and
+  A local database, worker and Celery Beat now run the approved VietnamWorks
+  schedule and preserve their volumes across Docker restarts, but they are not a
+  durable public production deployment. Hetzner deployment therefore requires
+  an owner-approved `HCLOUD_TOKEN` and
   Terraform apply, DNS control, creation of the protected GitHub Environment and
   unique production secrets. The validated CX32 module, cloud-init, release
   workflow, immutable image tags, rollback, production Compose override, Caddy

@@ -1,6 +1,6 @@
 # Salary Model Card
 
-- Last candidate evaluation: 2026-07-17
+- Last candidate evaluation: 2026-07-18
 - Last development diagnosis: 2026-07-18
 
 ## Status
@@ -77,7 +77,8 @@ experiment still explains a limited portion of salary variance. See the
 | P25-P75 coverage | 36.05% | Temporal under-coverage |
 
 Calibration offsets are -297,507 VND for P25 and +539,345 VND for P75. MLflow
-run: `c946348c8fea4834a295c3dfdc5e028c`. The compact
+run: `b4d7b96c9ed2449484411cfdf278a6ba`, tagged with source revision
+`b6ae6418eb661cf19fbcff7f61b58a6995db8544`. The compact
 [machine-readable evaluation](evidence/salary_evaluation.json) is the input to
 the main-branch publication job.
 

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
-  "run_id": "c946348c8fea4834a295c3dfdc5e028c",
-  "source_revision": "local-verification-20260717-title-v2",
-  "metadata_sha256": "38d32b350779d77c506e2292d56f4dc506f473b07082372ce8f92abe697e3e3b",
+  "run_id": "b4d7b96c9ed2449484411cfdf278a6ba",
+  "source_revision": "b6ae6418eb661cf19fbcff7f61b58a6995db8544",
+  "metadata_sha256": "a068c4ff872fa6c8ad48281989007065c45628eaecdd94fc8b00d3edb30cbc57",
   "status": "rejected",
   "failed_gates": [
     "mape",
@@ -22,7 +22,7 @@
     "train_period_end": "2025-10-31",
     "test_period_start": "2026-06-15",
     "test_period_end": "2026-07-17",
-    "trained_at": "2026-07-17T16:22:39.253506+00:00"
+    "trained_at": "2026-07-18T15:29:12.311565+00:00"
   },
   "evaluation_diagnostics": {
     "within_15pct_rate": 0.27906976744186046,

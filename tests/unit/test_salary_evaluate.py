@@ -91,7 +91,7 @@ def test_checked_in_evidence_matches_the_open_publication_gates() -> None:
     evidence_path = PROJECT_ROOT / "docs/evidence/salary_evaluation.json"
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
 
-    assert evidence["run_id"] == "c946348c8fea4834a295c3dfdc5e028c"
+    assert evidence["run_id"] == "b4d7b96c9ed2449484411cfdf278a6ba"
     failures = evaluation_failures(
         evidence,
         require_data_ready=True,
@@ -100,7 +100,6 @@ def test_checked_in_evidence_matches_the_open_publication_gates() -> None:
     assert failures == [
         "test_mape exceeds 0.1500",
         "data_readiness must pass",
-        "source_revision must be a 40-character Git commit SHA",
     ]
     assert (
         main(
