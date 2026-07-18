@@ -15,7 +15,7 @@ runtime behavior was exercised; source files alone are not accepted as evidence.
 | `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
 | Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
 | dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 185 unit/integration tests pass with 80.49% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
+| Unit coverage at least 60% | Pass | 186 unit/integration tests pass with 80.53% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
 | Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
 
 MVP functionality and checkpoint verification are complete. Release gates that
@@ -116,13 +116,18 @@ into GitHub Actions.
     and committed-provenance checks, so automatic release cannot claim the open
     Phase 3 gate.
 14. GitHub Actions run
-    [`29634554921`](https://github.com/auster-vn/JobRadar/actions/runs/29634554921)
-    at commit `847afa99ddb80b448f9e1605f33afc5da545cfce` passed backend,
+    [`29635917668`](https://github.com/auster-vn/JobRadar/actions/runs/29635917668)
+    at commit `b5280e4c5451f03e2aecedb16cf5b2864d0cb0f4` passed backend,
     frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
     container builds. Its overall result is correctly failed only by
     `ml-publication`; dependent release run
-    [`29634790708`](https://github.com/auster-vn/JobRadar/actions/runs/29634790708)
+    [`29636153376`](https://github.com/auster-vn/JobRadar/actions/runs/29636153376)
     was skipped rather than publishing an ineligible model or deployment.
+15. PostgreSQL regression coverage now scrapes the same source posting twice:
+    first with a disclosed 20-30 million VND range and then with compensation
+    omitted and a later posting date. Ingestion keeps the disclosed range and
+    earliest `posted_at` while updating current listing metadata. The run above
+    passed this case among 186 tests with 80.53% coverage and dbt 32/32.
 
 ## Release Gates Still Open
 
@@ -198,6 +203,12 @@ independent publication holdout. A future publication attempt must freeze a new
 later period before feature or model selection and must still satisfy every
 existing readiness threshold.
 
+This is an operational collection requirement, not a request for a manually
+supplied dataset. The intended path is for approved source adapters and Celery
+Beat to append new source IDs to PostgreSQL every day. Repeated scrapes keep one
+sample per posting, cannot manufacture additional months and cannot erase an
+earlier disclosed salary when a source later hides it.
+
 The 2026-07-18 public-source review found no admissible shortcut. The
 `jasong03/salary` Hugging Face repository has no dataset card or declared
 license, so its 33 MB text file was not downloaded or imported. The licensed
@@ -220,7 +231,7 @@ monthly periods or be bundled into this product as a readiness shortcut.
 
 - Version-control bootstrap is complete: private repository
   [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
-  `main` baseline at `847afa99ddb80b448f9e1605f33afc5da545cfce`. The audited CI
+  `main` baseline through `b5280e4c5451f03e2aecedb16cf5b2864d0cb0f4`. The audited CI
   evidence is listed above; release remains intentionally blocked by the salary
   publication job, not by missing repository history.
 - TopCV returned one complete 46-card, seven-page Software Engineering listing
@@ -232,6 +243,8 @@ monthly periods or be bundled into this product as a readiness shortcut.
 - A 2026-07-18 GitHub configuration audit found no `production` Environment,
   repository secrets or repository variables. No local `terraform.tfvars`,
   Terraform backend configuration or production `.env` is present either.
+  Consequently, no durable production database, worker or Celery Beat process
+  is currently running to accumulate the approved daily scraper observations.
   Hetzner deployment therefore requires an owner-approved `HCLOUD_TOKEN` and
   Terraform apply, DNS control, creation of the protected GitHub Environment and
   unique production secrets. The validated CX32 module, cloud-init, release

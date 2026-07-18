@@ -35,8 +35,8 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 185 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.49% |
+| Backend unit and integration tests | 186 passed |
+| Combined API, NLP, scraper, and ML coverage | 80.53% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
