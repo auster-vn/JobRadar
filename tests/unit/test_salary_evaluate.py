@@ -72,7 +72,19 @@ def test_salary_evaluator_requires_committed_provenance_when_requested() -> None
     ]
 
     payload["source_revision"] = "a" * 40
-    assert evaluation_failures(payload, require_committed_revision=True) == []
+    assert evaluation_failures(
+        payload,
+        require_committed_revision=True,
+        revision_is_committed=lambda _: False,
+    ) == ["source_revision must identify a Git commit reachable from HEAD"]
+    assert (
+        evaluation_failures(
+            payload,
+            require_committed_revision=True,
+            revision_is_committed=lambda _: True,
+        )
+        == []
+    )
 
 
 def test_checked_in_evidence_matches_the_open_publication_gates() -> None:

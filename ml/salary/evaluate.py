@@ -2,11 +2,33 @@ import argparse
 import json
 import math
 import re
-from collections.abc import Sequence
+import shutil
+import subprocess
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from ml.salary.training import MAPE_PUBLICATION_LIMIT, MIN_TEST_ROWS
+
+PROJECT_ROOT = Path(__file__).parents[2]
+
+
+def _revision_is_reachable(source_revision: str) -> bool:
+    git = shutil.which("git")
+    if git is None:
+        return False
+    try:
+        result = subprocess.run(  # noqa: S603 - revision is validated as a hexadecimal SHA
+            [git, "merge-base", "--is-ancestor", source_revision, "HEAD"],
+            cwd=PROJECT_ROOT,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
 
 
 def evaluation_failures(
@@ -15,6 +37,7 @@ def evaluation_failures(
     max_mape: float = MAPE_PUBLICATION_LIMIT,
     require_data_ready: bool = False,
     require_committed_revision: bool = False,
+    revision_is_committed: Callable[[str], bool] | None = None,
 ) -> list[str]:
     if not math.isfinite(max_mape) or not 0 < max_mape <= 1:
         raise ValueError("max_mape must be finite and within (0, 1]")
@@ -72,6 +95,10 @@ def evaluation_failures(
             or re.fullmatch(r"[0-9a-f]{40}", source_revision) is None
         ):
             failures.append("source_revision must be a 40-character Git commit SHA")
+        else:
+            revision_check = revision_is_committed or _revision_is_reachable
+            if not revision_check(source_revision):
+                failures.append("source_revision must identify a Git commit reachable from HEAD")
     return failures
 
 
