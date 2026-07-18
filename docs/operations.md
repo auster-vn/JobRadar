@@ -19,6 +19,29 @@ the same first-party JSON search endpoint as that page for at most ten pages of
 and discards unsupported currencies or salaries outside 1-200 million VND after
 conversion.
 
+Operational salary history grows from these scheduled scrapes; no manually
+supplied dataset is required. A source posting is keyed by platform and stable
+job ID, so repeated runs do not inflate row or month counts. Ingestion preserves
+a previously disclosed salary when a later payload omits compensation, accepts
+a later valid disclosed range as a source correction, retains the earliest
+posting timestamp, and keeps inactive postings for the six-month training
+window. The bundled historical snapshot is a development baseline with separate
+provenance, not a substitute for running the collectors.
+
+After changing an approved source flag in `.env`, recreate `worker` and `beat`.
+Trigger and inspect a first VietnamWorks run with:
+
+```bash
+docker compose up -d --force-recreate worker beat
+docker compose exec worker celery -A workers.celery_app call \
+  workers.scrape_tasks.scrape_vietnamworks \
+  --kwargs='{"max_pages":10}'
+curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
+  http://localhost:8000/api/admin/scrape/batches
+curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
+  http://localhost:8000/api/admin/ml/data-readiness
+```
+
 ## Monitoring
 
 Run `docker compose -f compose.monitoring.yaml up -d` while the API is available

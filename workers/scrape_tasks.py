@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from api.core.config import get_settings
@@ -75,56 +75,71 @@ async def _upsert_job(item: RawJobValidator) -> tuple[uuid.UUID, bool]:
             .returning(RawJob.id)
         )
         assert company_id is not None and raw_id is not None
+        job_statement = insert(Job).values(
+            raw_job_id=raw_id,
+            platform=item.platform,
+            platform_job_id=item.platform_job_id,
+            source_url=str(item.source_url),
+            company_id=company_id,
+            title=item.title,
+            title_normalized=title.title,
+            job_level=job_level,
+            job_type=item.job_type,
+            location=item.location,
+            salary_min=salary.min_vnd,
+            salary_max=salary.max_vnd,
+            salary_negotiable=salary.negotiable,
+            salary_currency="VND",
+            description_raw=item.description,
+            description_cleaned=item.description,
+            skills_required=required_skills,
+            skills_nice_to_have=extracted.nice_to_have,
+            experience_years_min=item.experience_years_min,
+            experience_years_max=item.experience_years_max,
+            posted_at=item.posted_at,
+            expires_at=item.expires_at,
+            is_active=True,
+        )
+        incoming_salary_disclosed = or_(
+            job_statement.excluded.salary_min.is_not(None),
+            job_statement.excluded.salary_max.is_not(None),
+        )
         job_id = await session.scalar(
-            insert(Job)
-            .values(
-                raw_job_id=raw_id,
-                platform=item.platform,
-                platform_job_id=item.platform_job_id,
-                source_url=str(item.source_url),
-                company_id=company_id,
-                title=item.title,
-                title_normalized=title.title,
-                job_level=job_level,
-                job_type=item.job_type,
-                location=item.location,
-                salary_min=salary.min_vnd,
-                salary_max=salary.max_vnd,
-                salary_negotiable=salary.negotiable,
-                salary_currency="VND",
-                description_raw=item.description,
-                description_cleaned=item.description,
-                skills_required=required_skills,
-                skills_nice_to_have=extracted.nice_to_have,
-                experience_years_min=item.experience_years_min,
-                experience_years_max=item.experience_years_max,
-                posted_at=item.posted_at,
-                expires_at=item.expires_at,
-                is_active=True,
-            )
-            .on_conflict_do_update(
+            job_statement.on_conflict_do_update(
                 constraint="uq_job_source_id",
                 set_={
+                    "raw_job_id": raw_id,
+                    "source_url": str(item.source_url),
                     "company_id": company_id,
                     "title": item.title,
                     "title_normalized": title.title,
                     "job_level": job_level,
+                    "job_type": item.job_type,
                     "location": item.location,
-                    "salary_min": salary.min_vnd,
-                    "salary_max": salary.max_vnd,
-                    "salary_negotiable": salary.negotiable,
+                    "salary_min": case(
+                        (incoming_salary_disclosed, job_statement.excluded.salary_min),
+                        else_=Job.salary_min,
+                    ),
+                    "salary_max": case(
+                        (incoming_salary_disclosed, job_statement.excluded.salary_max),
+                        else_=Job.salary_max,
+                    ),
+                    "salary_negotiable": case(
+                        (incoming_salary_disclosed, job_statement.excluded.salary_negotiable),
+                        else_=Job.salary_negotiable,
+                    ),
+                    "description_raw": item.description,
                     "description_cleaned": item.description,
                     "skills_required": required_skills,
                     "skills_nice_to_have": extracted.nice_to_have,
                     "experience_years_min": item.experience_years_min,
                     "experience_years_max": item.experience_years_max,
-                    "posted_at": item.posted_at,
+                    "posted_at": func.least(Job.posted_at, job_statement.excluded.posted_at),
                     "expires_at": item.expires_at,
                     "is_active": True,
                     "updated_at": datetime.now(UTC),
                 },
-            )
-            .returning(Job.id)
+            ).returning(Job.id)
         )
         assert job_id is not None
         return job_id, existing_id is None

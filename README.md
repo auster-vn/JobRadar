@@ -124,6 +124,31 @@ docker compose exec api python scripts/seed_demo.py
 Demo rows are never valid evidence for scraper, salary-model, or performance
 readiness gates.
 
+### Collect operational data
+
+The operational salary input is disclosed compensation from permitted job
+postings collected by the source adapters. It is not a dataset that an operator
+must supply manually. The bundled VietJobs snapshot is a provenance-pinned
+development baseline; it cannot manufacture live monthly coverage or satisfy
+the salary readiness gate by itself.
+
+After reviewing the current source policy, enable only the approved adapters in
+`.env` and recreate the worker and scheduler. For example:
+
+```bash
+export ENABLE_VIETNAMWORKS_SCRAPER=true
+docker compose up -d --force-recreate worker beat
+docker compose exec worker celery -A workers.celery_app call \
+  workers.scrape_tasks.scrape_vietnamworks \
+  --kwargs='{"max_pages":10}'
+```
+
+Each source posting remains one salary sample even when it is scraped repeatedly.
+A later payload with hidden compensation cannot erase a valid disclosed range,
+and inactive postings remain available only to the time-bounded salary dataset.
+Inspect collection batches at `GET /api/admin/scrape/batches` and model coverage
+at `GET /api/admin/ml/data-readiness`.
+
 ### Add monitoring
 
 ```bash

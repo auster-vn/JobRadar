@@ -5,7 +5,7 @@ stored as timezone-aware values. Salary amounts are monthly VND after ingestion.
 
 | Relation | Grain | Purpose |
 | --- | --- | --- |
-| `raw_jobs` | source + source job ID | Immutable source payload and ingestion audit |
+| `raw_jobs` | source + source job ID | Latest validated source payload and ingestion state |
 | `companies` | normalized company | Canonical employer identity and metadata |
 | `jobs` | source + source job ID | Searchable normalized listing |
 | `job_embeddings` | job | 384-dimensional semantic vector with model provenance |
@@ -22,7 +22,11 @@ stored as timezone-aware values. Salary amounts are monthly VND after ingestion.
 `skills_required` and `skills_nice_to_have` are canonical taxonomy labels.
 `salary_min` and `salary_max` are nullable because undisclosed pay must not be
 invented. `platform`, `platform_job_id`, `source_url` and `raw_job_id` preserve
-provenance. `is_active` is lifecycle state, not a deletion marker.
+provenance. Once a posting has disclosed a valid range, a later undisclosed
+payload cannot replace it with nulls; a later valid range may replace it as a
+source correction. For a stable source ID, ingestion retains the earliest
+`posted_at` value so repeated relative-date parsing cannot move an observation
+into a newer month. `is_active` is lifecycle state, not a deletion marker.
 
 ## Analytics models
 

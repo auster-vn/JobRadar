@@ -8,7 +8,7 @@ collection, enrichment, analytics and user-facing workloads.
 
 1. Celery Beat schedules a source adapter.
 2. The adapter checks `robots.txt`, applies a per-domain rate limit and validates
-   public posting data before writing `raw_jobs`.
+   public posting data before updating the source-grained `raw_jobs` record.
 3. NLP workers normalize salary, title and skills into `jobs`.
 4. dbt builds stable analytics marts from structured data.
 5. FastAPI serves jobs, salary bands and market analytics to the Next.js app.
@@ -21,7 +21,9 @@ so policy or markup changes cannot leak into the core domain model.
 Licensed historical salary observations have their own table and provenance.
 The `salary_market_data` view unifies them with disclosed live salaries for
 benchmarking. Expired listings remain available to the time-bounded salary
-dataset without being exposed as active jobs.
+dataset without being exposed as active jobs. Repeated collection keeps one
+sample per source posting: a payload with no disclosed compensation cannot erase
+an earlier valid range, and the earliest observed posting timestamp is retained.
 
 ## Security boundaries
 
