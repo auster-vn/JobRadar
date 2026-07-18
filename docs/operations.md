@@ -28,11 +28,14 @@ posting timestamp, and keeps inactive postings for the six-month training
 window. The bundled historical snapshot is a development baseline with separate
 provenance, not a substitute for running the collectors.
 
-After changing an approved source flag in `.env`, recreate `worker` and `beat`.
-Trigger and inspect a first VietnamWorks run with:
+After changing an approved source flag in `.env`, use the collector overlay when
+the local stack must resume automatically after a host or Docker restart. It
+sets `restart: unless-stopped` for long-running services while leaving migration
+and salary import as one-shot prerequisites. Trigger and inspect a first
+VietnamWorks run with:
 
 ```bash
-docker compose up -d --force-recreate worker beat
+docker compose -f compose.yaml -f compose.collector.yaml up -d
 docker compose exec worker celery -A workers.celery_app call \
   workers.scrape_tasks.scrape_vietnamworks \
   --kwargs='{"max_pages":10}'
@@ -41,6 +44,9 @@ curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
 curl --fail -H "X-Admin-Key: $ADMIN_API_KEY" \
   http://localhost:8000/api/admin/ml/data-readiness
 ```
+
+Run `docker compose down` to stop collection intentionally. Starting the base
+Compose file without the overlay keeps the disposable development behavior.
 
 ## Monitoring
 

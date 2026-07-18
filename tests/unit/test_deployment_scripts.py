@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).parents[2]
 
 
@@ -296,6 +298,23 @@ def test_test_jobs_fetch_history_for_evidence_provenance() -> None:
 
     assert "fetch-depth: 0" in backend_job
     assert "fetch-depth: 0" in contract_job
+
+
+def test_collector_overlay_restarts_only_long_running_services() -> None:
+    overlay = yaml.safe_load((PROJECT_ROOT / "compose.collector.yaml").read_text(encoding="utf-8"))
+
+    assert set(overlay["services"]) == {
+        "db",
+        "redis",
+        "api",
+        "worker",
+        "ml-worker",
+        "ml-api",
+        "mlflow",
+        "beat",
+        "web",
+    }
+    assert all(service["restart"] == "unless-stopped" for service in overlay["services"].values())
 
 
 class _SmokeHandler(BaseHTTPRequestHandler):

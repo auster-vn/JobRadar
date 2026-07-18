@@ -133,15 +133,20 @@ development baseline; it cannot manufacture live monthly coverage or satisfy
 the salary readiness gate by itself.
 
 After reviewing the current source policy, enable only the approved adapters in
-`.env` and recreate the worker and scheduler. For example:
+`.env`. For a workstation that must accumulate operational observations across
+host and Docker restarts, start the stack with the collector overlay:
 
 ```bash
-export ENABLE_VIETNAMWORKS_SCRAPER=true
-docker compose up -d --force-recreate worker beat
+# Set ENABLE_VIETNAMWORKS_SCRAPER=true in .env first.
+docker compose -f compose.yaml -f compose.collector.yaml up -d
 docker compose exec worker celery -A workers.celery_app call \
   workers.scrape_tasks.scrape_vietnamworks \
   --kwargs='{"max_pages":10}'
 ```
+
+The overlay applies `restart: unless-stopped` only to long-running services;
+migrations and idempotent salary-data import remain one-shot prerequisites.
+Use `docker compose down` when collection should stop intentionally.
 
 Each source posting remains one salary sample even when it is scraped repeatedly.
 A later payload with hidden compensation cannot erase a valid disclosed range,

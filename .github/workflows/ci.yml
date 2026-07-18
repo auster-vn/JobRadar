@@ -191,6 +191,7 @@ jobs:
       - run: terraform -chdir=infra/terraform init -backend=false
       - run: terraform -chdir=infra/terraform validate
       - run: terraform -chdir=infra/terraform test
+      - run: docker compose -f compose.yaml -f compose.collector.yaml config --quiet
       - run: python scripts/validate_monitoring.py
       - name: Validate Prometheus configuration
         run: >-
