@@ -116,12 +116,12 @@ into GitHub Actions.
     fails only MAPE and readiness, so automatic release cannot claim the open
     Phase 3 gate.
 14. GitHub Actions run
-    [`29650889285`](https://github.com/auster-vn/JobRadar/actions/runs/29650889285)
-    at commit `a6d2a99857d5ad039ab80340198b4fa3b884d2a8` passed backend,
+    [`29653823921`](https://github.com/auster-vn/JobRadar/actions/runs/29653823921)
+    at commit `a195c7c1aecfd1cb9656565e09dd28ae16ada476` passed backend,
     frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
     container builds. Its overall result is correctly failed only by
     `ml-publication`; dependent release run
-    [`29651126441`](https://github.com/auster-vn/JobRadar/actions/runs/29651126441)
+    [`29654118916`](https://github.com/auster-vn/JobRadar/actions/runs/29654118916)
     was skipped rather than publishing an ineligible model or deployment.
 15. PostgreSQL regression coverage now scrapes the same source posting twice:
     first with a disclosed 20-30 million VND range and then with compensation
@@ -254,7 +254,7 @@ monthly periods or be bundled into this product as a readiness shortcut.
 - Version-control bootstrap is complete: private repository
   [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
   `main`; the latest fully audited code baseline is
-  `a6d2a99857d5ad039ab80340198b4fa3b884d2a8`. The CI evidence is listed above;
+  `a195c7c1aecfd1cb9656565e09dd28ae16ada476`. The CI evidence is listed above;
   release remains intentionally blocked by the salary publication job, not by
   missing repository history.
 - TopCV direct HTTP access currently receives a managed 403, while its
