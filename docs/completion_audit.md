@@ -110,18 +110,29 @@ into GitHub Actions.
 13. A dedicated `ml-publication` job now enforces machine-readable MLflow
     evidence on `main`. It rejects non-finite or aggregate metrics,
     non-temporal/undersized holdouts, MAPE above 15%, failed readiness and local
-    source revisions. The current evidence intentionally fails MAPE, readiness
+    source revisions. A syntactically valid SHA must also identify a real commit
+    reachable from the checked-out `HEAD`; CI fetches full history for this
+    provenance check. The current evidence intentionally fails MAPE, readiness
     and committed-provenance checks, so automatic release cannot claim the open
     Phase 3 gate.
+14. GitHub Actions run
+    [`29603258795`](https://github.com/auster-vn/JobRadar/actions/runs/29603258795)
+    at commit `26abc4b2767d84461cf42687164b6cb34eb30978` passed backend,
+    frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
+    container builds. Its overall result is correctly failed only by
+    `ml-publication`; dependent release run
+    [`29603989153`](https://github.com/auster-vn/JobRadar/actions/runs/29603989153)
+    was skipped rather than publishing an ineligible model or deployment.
 
 ## Release Gates Still Open
 
 ### Salary model publication
 
-The candidate trained on 1,287 real salary rows is deliberately rejected. The
-new VietnamWorks observations enable an untouched temporal holdout beginning
-2026-06-15; the training side still contains only the October 2025 historical
-snapshot, exposing substantial temporal distribution shift:
+The candidate trained on 1,287 real salary rows is deliberately rejected. Its
+VietnamWorks observations were excluded from fitting and train-only selection,
+forming a temporal holdout beginning 2026-06-15; the training side contains only
+the October 2025 historical snapshot, exposing substantial temporal distribution
+shift:
 
 All 1,115 historical rows now re-derive title and level from raw source text on
 every import instead of trusting stale derived CSV fields. Revision
@@ -169,6 +180,24 @@ Meeting 15% requires a larger, more consistently labeled salary history or a
 revised model validated on an untouched temporal holdout. Lowering the gate or
 leaking holdout data is not an acceptable completion strategy.
 
+A robots-aware VietnamWorks probe on 2026-07-18 traversed all ten permitted
+pages and returned 414 current jobs, including 152 valid disclosed salaries
+dated 2026-06-18 through 2026-07-17. A development-only root-cause experiment
+combined those rows with the pinned 1,115-row snapshot. Model objectives were
+selected only by three-fold training-side cross-validation: the best all-role
+candidate still measured 28.62% CV MAPE and 32.47% on the current-period rows;
+restricting the experiment to 396 canonical technical rows still measured
+28.78% current-period MAPE. The corresponding readiness report remained false
+with three months, 396 canonical rows, 84 latest-month rows and only two of 84
+observed role/level/city segments qualified. This rules out a small model or
+scope adjustment as a credible path to 15% on the available data.
+
+Because the June-July observations have now been inspected repeatedly during
+diagnosis, they are development validation data for future work, not an
+independent publication holdout. A future publication attempt must freeze a new
+later period before feature or model selection and must still satisfy every
+existing readiness threshold.
+
 The 2026-07-18 public-source review found no admissible shortcut. The
 `jasong03/salary` Hugging Face repository has no dataset card or declared
 license, so its 33 MB text file was not downloaded or imported. The licensed
@@ -180,26 +209,37 @@ snapshot was rejected because its MIT platform label conflicts with text
 restricting redistribution and the data owner is unidentified. Techmap's dated
 Vietnam feed remains a commercial procurement option, not an open dataset; it
 requires owner approval, contract rights and salary-schema validation.
+The 606,878-row
+[`tinixai/vietnamese-job-descriptions`](https://huggingface.co/datasets/tinixai/vietnamese-job-descriptions)
+corpus was also excluded: it provides only a row-level year rather than a
+posting month, is licensed CC-BY-NC-4.0, and its own documentation requires
+source-term review before production or commercial use. It cannot establish six
+monthly periods or be bundled into this product as a readiness shortcut.
 
 ### External source and production dependencies
 
-- The current workspace has no Git `HEAD`; its 32 top-level project paths are
-  still untracked. CI/CD cannot execute against this source tree until an
-  initial reviewed commit is created and pushed. This audit does not create or
-  publish repository history on the owner's behalf.
+- Version-control bootstrap is complete: private repository
+  [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
+  `main` baseline at `26abc4b2767d84461cf42687164b6cb34eb30978`. The latest CI
+  evidence is listed above; release remains intentionally blocked by the salary
+  publication job, not by missing repository history.
 - TopCV returned one complete 46-card, seven-page Software Engineering listing
   during the 2026-07-16 audit, then resumed returning HTTP 403. Its implemented
   parser recovered salary, experience and location for all 46 observed cards;
   the scheduled adapter remains off by default, raises `SourceBlockedError` on
   access denial and does not attempt to solve Cloudflare challenges.
 - LinkedIn and notification delivery require provider-issued credentials.
-- Hetzner deployment requires an `HCLOUD_TOKEN`, approved Terraform apply, DNS
-  domain and unique production secrets. The validated CX32 module, cloud-init,
-  release workflow, immutable image tags, rollback, production Compose override,
-  Caddy TLS proxy and backup procedure are ready, but no live deployment can be
+- A 2026-07-18 GitHub configuration audit found no `production` Environment,
+  repository secrets or repository variables. No local `terraform.tfvars`,
+  Terraform backend configuration or production `.env` is present either.
+  Hetzner deployment therefore requires an owner-approved `HCLOUD_TOKEN` and
+  Terraform apply, DNS control, creation of the protected GitHub Environment and
+  unique production secrets. The validated CX32 module, cloud-init, release
+  workflow, immutable image tags, rollback, production Compose override, Caddy
+  TLS proxy and backup procedure are ready, but no live deployment can be
   claimed without those external inputs and an executed post-deploy smoke test.
 
-Therefore the codebase and release images are locally ready, and the MVP is
-complete. Version-control bootstrap, the salary data/accuracy gate and external
-production inputs remain required before the full Phase 0-5 roadmap can be
-claimed as production complete.
+Therefore the codebase, CI contracts and release images are ready, and the MVP
+is complete. The salary data/accuracy gate and external production inputs remain
+required before the full Phase 0-5 roadmap can be claimed as production
+complete.

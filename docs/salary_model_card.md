@@ -1,6 +1,7 @@
 # Salary Model Card
 
-Last evaluated: 2026-07-17
+- Last candidate evaluation: 2026-07-17
+- Last development diagnosis: 2026-07-18
 
 ## Status
 
@@ -37,8 +38,10 @@ inference.
   records title-normalizer revision
   `2f434fba22de3a14c1b199331c8ca18408dc72e702071bf4bbfe380daff40f58`;
   stale derived fields cannot silently survive a re-import.
-- The historical source has no posting timestamp, but current VietnamWorks rows
-  now provide an untouched temporal holdout beginning 2026-06-15.
+- The historical source has no posting timestamp. VietnamWorks rows beginning
+  2026-06-15 were excluded from fitting and model selection for the recorded
+  candidate evaluation. They have since been reused for post-rejection
+  diagnosis, so a future publication attempt must use a newly frozen period.
 
 VietJobs itself documents salary variability, source bias and duplicated or
 templated descriptions as limitations. Its strongest reported fine-tuned salary
@@ -101,6 +104,23 @@ The temporal result confirms that the October 2025 snapshot does not generalize
 to June-July 2026 salaries. Segment-level aggregation can produce a lower number
 but is not substituted for the specified row-level gate.
 
+### Development Diagnosis After Rejection
+
+On 2026-07-18, the robots-aware VietnamWorks adapter returned 414 current jobs
+across ten pages, of which 152 had valid disclosed salaries dated 2026-06-18
+through 2026-07-17. A development-only experiment joined those rows to the
+pinned 1,115-row snapshot and compared objectives using three-fold
+training-side cross-validation before evaluating the current period. The best
+all-role objective measured 28.62% CV MAPE and 32.47% current-period MAPE.
+Restricting the scope to 396 canonical technical rows still produced 28.78%
+current-period MAPE.
+
+These results are not a replacement candidate or publication evidence. They
+show that objective selection and canonical-role filtering do not close the
+accuracy gap with the available history. They also make the inspected
+June-July period development validation data; it must not be represented as an
+untouched holdout in a subsequent model publication.
+
 ## Data Readiness for Retraining
 
 Before reconsidering publication, collect all of the following without bypassing
@@ -122,5 +142,7 @@ qualified and 83 underqualified segments among 85 candidates, and 84 rows in the
 latest month; duplicate-source and currency checks pass, but overall readiness
 remains false.
 
-The 15% gate must not be lowered, and holdout rows must not influence vocabulary,
-feature selection, hyperparameter selection or interval calibration.
+The next publication evaluation must freeze a later independent period before
+development begins. The 15% gate must not be lowered, and those holdout rows
+must not influence vocabulary, feature selection, hyperparameter selection or
+interval calibration.

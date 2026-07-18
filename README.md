@@ -226,7 +226,8 @@ pass. The main-branch publication job requires:
 - MAPE at or below 15%;
 - an automated salary-data readiness report with sufficient monthly and segment
   coverage; and
-- a committed 40-character source revision.
+- a 40-character source revision that identifies a real Git commit reachable
+  from the evaluated repository `HEAD`.
 
 The current candidate remains rejected, so the API returns observed market
 quantiles with source and period provenance or a deterministic cold-start
