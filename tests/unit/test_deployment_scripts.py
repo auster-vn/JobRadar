@@ -287,6 +287,17 @@ def test_e2e_api_does_not_hold_the_uv_cache_lock_during_cleanup() -> None:
     assert "uv run uvicorn" not in e2e_job
 
 
+def test_test_jobs_fetch_history_for_evidence_provenance() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    backend_job = workflow.split("  backend:", maxsplit=1)[1].split("\n  frontend:", maxsplit=1)[0]
+    contract_job = workflow.split("  ml-contract:", maxsplit=1)[1].split(
+        "\n  ml-publication:", maxsplit=1
+    )[0]
+
+    assert "fetch-depth: 0" in backend_job
+    assert "fetch-depth: 0" in contract_job
+
+
 class _SmokeHandler(BaseHTTPRequestHandler):
     paths: list[str] = []
 
