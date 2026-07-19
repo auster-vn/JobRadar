@@ -9,7 +9,7 @@ salary benchmarks, matching, and alerts through a FastAPI API and a Vietnamese
 Next.js dashboard.
 
 > **Project status:** the measured MVP runs locally and the salary-model
-> publication gate now passes on a clean database: 11.66% MAPE against a fixed
+> publication gate now passes on a clean database: 11.88% MAPE against a fixed
 > 15% maximum with `data_readiness=true`. GitHub CI passes, and release retraining
 > plus all three GHCR image builds pass. Live Hetzner deployment is blocked on
 > production host, DNS and secret configuration; no live deployment is claimed
@@ -37,15 +37,15 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 245 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.64% |
+| Backend unit and integration tests | 246 passed |
+| Combined API, NLP, scraper, and ML coverage | 80.68% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
-| Salary publication | Pass locally: 11.66% MAPE vs. 15% maximum; readiness pass |
-| GitHub CI | [Run 29679893232](https://github.com/auster-vn/JobRadar/actions/runs/29679893232) passed every job |
-| Release model and images | [Run 29680158274](https://github.com/auster-vn/JobRadar/actions/runs/29680158274) passed |
-| Live production deployment | [Deploy 29680312938](https://github.com/auster-vn/JobRadar/actions/runs/29680312938) blocked before SSH: no production host or DNS |
+| Salary publication | Pass locally: 11.88% MAPE vs. 15% maximum; readiness pass |
+| GitHub CI | [Run 29681248259](https://github.com/auster-vn/JobRadar/actions/runs/29681248259) passed every job |
+| Release model and images | [Run 29681472269](https://github.com/auster-vn/JobRadar/actions/runs/29681472269) passed |
+| Live production deployment | [Deploy 29681636684](https://github.com/auster-vn/JobRadar/actions/runs/29681636684) blocked before SSH: no production host or DNS |
 
 ## Architecture
 
@@ -285,7 +285,7 @@ The clean-room pool has 3,208 unique observations across six monthly periods,
 1,149 canonical technical training rows, 392 rows in the latest month and eight
 supported training segments. The frozen TopCV cohort contains 179 source IDs;
 69 observations across six benchmark segments qualify for evaluation. MAPE is
-11.66%, readiness passes, and unsupported inference requests still fall back to
+11.88%, readiness passes, and unsupported inference requests still fall back to
 observed market quantiles or the deterministic cold-start response.
 
 Release retrains from the pinned snapshots at the release Git SHA, embeds the
@@ -341,7 +341,7 @@ account; Caddy terminates TLS; GitHub Actions builds commit-addressed GHCR image
 and deploys immutable release directories with smoke testing and rollback.
 
 The release pipeline has retrained the revision-bound model and published all
-three images for commit `5b436b8858ad18151fd94dae991c74e06e7ac7ee`. No live
+three images for commit `62e0481385caef0be4bf6c18e2fd4cb1a11a8dfa`. No live
 deployment is claimed: provisioning still requires an owner-approved Terraform
 apply, DNS, GitHub Environment secrets, and a verified public smoke test. Follow
 [`docs/operations.md`](docs/operations.md) for the complete deployment, backup,

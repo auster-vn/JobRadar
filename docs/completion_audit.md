@@ -11,7 +11,7 @@ the relevant test, release, deployment and smoke-test evidence must also exist.
 
 The application and salary publication path pass their local quality gates and
 GitHub CI. A clean database reconstructed from the six pinned snapshots produces
-a published salary model with 11.66% MAPE and passing data readiness. Release
+a published salary model with 11.88% MAPE and passing data readiness. Release
 retraining and all three GHCR image builds also pass at the audited code SHA.
 
 The project is **not yet production-complete**. The release deployment job
@@ -26,16 +26,16 @@ remain required. No production URL or successful deployment is claimed here.
 | MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 245 tests pass with 80.64% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 246 tests pass with 80.68% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally and in CI |
 | Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
-| Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.66% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
+| Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
 | Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
 | Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29679893232](https://github.com/auster-vn/JobRadar/actions/runs/29679893232) completed every job successfully |
-| Release workflow | Pass | [Run 29680158274](https://github.com/auster-vn/JobRadar/actions/runs/29680158274) published the model and all three images successfully |
-| Live production | Blocked | [Deploy 29680312938](https://github.com/auster-vn/JobRadar/actions/runs/29680312938) failed before SSH because no host or DNS exists for smoke tests |
+| GitHub CI | Pass | [Run 29681248259](https://github.com/auster-vn/JobRadar/actions/runs/29681248259) completed every job successfully |
+| Release workflow | Pass | [Run 29681472269](https://github.com/auster-vn/JobRadar/actions/runs/29681472269) published the model and all three images successfully |
+| Live production | Blocked | [Deploy 29681636684](https://github.com/auster-vn/JobRadar/actions/runs/29681636684) failed before SSH because no host or DNS exists for smoke tests |
 
 ## Collection Evidence
 
@@ -91,14 +91,14 @@ training-supported role/level/location segments form the publication benchmark.
 
 | Metric | Result | Contract |
 |---|---:|---:|
-| MAPE | **11.66199%** | at most 15% |
-| MAE | 2,430,444 VND | informational |
-| R2 | -0.2684 | informational and disclosed |
+| MAPE | **11.88030%** | at most 15% |
+| MAE | 2,477,873 VND | informational |
+| R2 | -0.3193 | informational and disclosed |
 | Training-median baseline MAPE | 19.27176% | informational |
-| Predictions within 15% | 75.36% | informational |
-| P90 absolute percentage error | 22.02% | informational |
-| Median percentage bias | +8.44% | informational |
-| Train-only interval coverage | 53.62% | informational |
+| Predictions within 15% | 72.46% | informational |
+| P90 absolute percentage error | 23.30% | informational |
+| Median percentage bias | +8.82% | informational |
+| Train-only interval coverage | 50.72% | informational |
 
 The evaluation unit is the partition-local `market_segment_median`; holdout
 labels never define training targets. Serving support is derived only from raw
@@ -111,8 +111,8 @@ manifest-matching holdout, MAPE at or below 15%, and a reachable 40-character Gi
 source revision. The release workflow retrains at its checked-out SHA, validates
 the serialized bundle, embeds it only into the ML image, installs it into an
 immutable revision directory and makes ML health fail if that exact bundle does
-not load. Clean-room run `20fafbaba37543d3ae8d800febb3154f` is bound to source
-revision `435a34f3e83e92d71abddff4809c146262e1bb39`; the compact record is
+not load. Clean-room run `c550b86ee30c4ba19d6889e1398f3f9a` is bound to source
+revision `62e0481385caef0be4bf6c18e2fd4cb1a11a8dfa`; the compact record is
 [`evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
 The model's negative R2 and narrow six-segment holdout are not hidden by the MAPE
@@ -120,12 +120,16 @@ pass. The model is an aggregate market benchmark, not an individual compensation
 predictor; full limitations are documented in
 [`salary_model_card.md`](salary_model_card.md).
 
+TF-IDF feature limits now resolve equal-frequency terms lexically. Independent
+local and GitHub release encoders produced the same canonical vocabulary digest,
+`2bd8ab1a5bc3d440a6f36d662bb1f34dd6d466e9f17e10d5feb2c5be79e1fbbf`.
+
 ## Local Validation Evidence
 
 The following checks were completed on 2026-07-19:
 
 - Ruff lint and formatting, plus strict mypy over 102 source files;
-- 245 backend/unit/integration tests with 80.64% coverage and the 70% threshold
+- 246 backend/unit/integration tests with 80.68% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
@@ -142,18 +146,18 @@ The following checks were completed on 2026-07-19:
 ## Remote Delivery Evidence
 
 GitHub CI run
-[`29679893232`](https://github.com/auster-vn/JobRadar/actions/runs/29679893232)
+[`29681248259`](https://github.com/auster-vn/JobRadar/actions/runs/29681248259)
 passed backend, frontend, browser E2E, infrastructure, ML contract, ML
 publication and all three container builds at
-`5b436b8858ad18151fd94dae991c74e06e7ac7ee`.
+`62e0481385caef0be4bf6c18e2fd4cb1a11a8dfa`.
 
 Dependent Release run
-[`29680158274`](https://github.com/auster-vn/JobRadar/actions/runs/29680158274)
+[`29681472269`](https://github.com/auster-vn/JobRadar/actions/runs/29681472269)
 reconstructed 3,208 rows, published MLflow run
-`4b75d70790274276bfe1cbcf8afaafe3` at the same source revision with 11.6619927%
+`fbaa55594d8548059eaec2fcdf1a4c22` at the same source revision with 11.8803047%
 MAPE, and built/pushed backend, web and seeded ML images. Release completed
 successfully. It triggered independent Deploy run
-[`29680312938`](https://github.com/auster-vn/JobRadar/actions/runs/29680312938),
+[`29681636684`](https://github.com/auster-vn/JobRadar/actions/runs/29681636684),
 which correctly failed before SSH with `PRODUCTION_HOST is required`.
 
 - the GitHub `production` Environment permits deployment only from `main`;

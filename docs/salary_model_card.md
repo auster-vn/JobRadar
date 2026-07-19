@@ -6,10 +6,10 @@ Last reviewed: 2026-07-19
 
 The release candidate passes the repository publication contract on a clean
 database reconstructed only from the six pinned salary snapshots. Its holdout
-MAPE is **11.66%**, below the fixed 15% maximum, and `data_readiness` is `true`.
-MLflow run `20fafbaba37543d3ae8d800febb3154f` is bound to source revision
-`435a34f3e83e92d71abddff4809c146262e1bb39`. The machine-readable result is checked in at
-[`docs/evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
+MAPE is **11.88%**, below the fixed 15% maximum, and `data_readiness` is `true`.
+MLflow run `c550b86ee30c4ba19d6889e1398f3f9a` is bound to source revision
+`62e0481385caef0be4bf6c18e2fd4cb1a11a8dfa`. The machine-readable result is
+checked in at [`docs/evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
 The model is an aggregate market-benchmark estimator. It is not an individual
 compensation predictor and must not be used for hiring, offer, promotion or
@@ -101,16 +101,16 @@ contains 69 benchmark-supported observations across six segments.
 
 | Metric | Result | Interpretation |
 |---|---:|---|
-| MAPE | **11.66%** | Passes the 15% publication gate |
-| MAE | 2,430,444 VND | Informational |
-| R2 | -0.2684 | Worse than a constant mean under squared-error scoring |
+| MAPE | **11.88%** | Passes the 15% publication gate |
+| MAE | 2,477,873 VND | Informational |
+| R2 | -0.3193 | Worse than a constant mean under squared-error scoring |
 | Training-median baseline MAPE | 19.27% | Model improves the declared MAPE baseline |
-| Predictions within 15% | 75.36% | Row-weighted holdout diagnostic |
-| P90 absolute percentage error | 22.02% | Tail-error diagnostic |
-| Median percentage bias | +8.44% | Model tends to overestimate this cohort |
+| Predictions within 15% | 72.46% | Row-weighted holdout diagnostic |
+| P90 absolute percentage error | 23.30% | Tail-error diagnostic |
+| Median percentage bias | +8.82% | Model tends to overestimate this cohort |
 | Target median | 21,000,000 VND | Holdout benchmark median |
-| Prediction median | 23,691,278 VND | 2,691,278 VND above target median |
-| Calibrated interval coverage | 53.62% | Close to the declared 50% target, not a guarantee |
+| Prediction median | 23,920,348 VND | 2,920,348 VND above target median |
+| Calibrated interval coverage | 50.72% | Close to the declared 50% target, not a guarantee |
 
 The negative R2 is not hidden by the MAPE pass. It shows that the small,
 six-segment holdout remains a weak basis for explaining cross-segment variance.
