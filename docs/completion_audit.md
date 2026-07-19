@@ -9,35 +9,36 @@ the relevant test, release, deployment and smoke-test evidence must also exist.
 
 ## Current Verdict
 
-The application and salary publication path pass their local quality gates and
-GitHub CI. A clean database reconstructed from the six pinned snapshots produces
-a published salary model with 11.88% MAPE and passing data readiness. Release
-retraining and all three GHCR image builds also pass at the audited code SHA.
+JobRadar is **production-complete for its documented private, single-operator
+target** at audited commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`. A clean
+database reconstructed from the six pinned snapshots produces a published
+salary model with 11.88% MAPE and passing data readiness. CI, release retraining,
+all three immutable image builds, self-hosted deployment, migration, internal
+health, private HTTPS smoke, production browser E2E, and backup verification all
+pass.
 
-The project is **not yet production-complete**. The last deployment job stopped
-at the former SSH-target preflight. The selected target is now this private
-workstation using a repository-scoped runner and Tailscale Serve, so no paid
-cloud host or public DNS is required. Docker and Tailscale still need to be
-enabled, the runner registered, and the private HTTPS deployment and smoke test
-completed. No production URL or successful deployment is claimed here.
+The live service is <https://jobradar-production.tail92479f.ts.net> and is
+intentionally reachable only by authenticated devices in the owner's Tailscale
+network. The public Hetzner path remains a manual, paid fallback and is not part
+of this completion claim.
 
 ## Acceptance Matrix
 
 | Scope | Status | Measured evidence |
 |---|---|---|
-| MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
+| MVP data volume | Pass | Operational PostgreSQL contains 1,782 unique jobs: 630 ITViec, 690 TopCV and 462 VietnamWorks |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 261 tests pass with 80.72% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 265 tests pass with 80.62% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
-| Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally and in CI |
-| Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
+| Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally, in CI and directly against production |
+| Data collection | Pass in production | ITViec, TopCV and VietnamWorks have completed real batches; the post-deploy TopCV probe parsed and updated 48 jobs with zero errors |
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
-| Infrastructure contract | Pass | Terraform format/init/validate and two tests, private self-hosted Compose ingress, actionlint and monitoring validation pass; the optional live firewall API authorize/revoke contract was exercised without leaking a resource |
+| Infrastructure contract | Pass | Terraform format/init/validate and two tests, private self-hosted Compose ingress, actionlint and monitoring validation pass; Docker/Tailscale/runner services are persistent and only web is bound to loopback |
 | Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29686395582](https://github.com/auster-vn/JobRadar/actions/runs/29686395582) completed every job successfully |
-| Release workflow | Pass | [Run 29686499805](https://github.com/auster-vn/JobRadar/actions/runs/29686499805) published the model and all three images successfully |
-| Live production | Blocked | [Deploy 29686670649](https://github.com/auster-vn/JobRadar/actions/runs/29686670649) failed at the retired SSH-target preflight; the private self-host target is not configured yet |
+| GitHub CI | Pass | [Run 29695553185](https://github.com/auster-vn/JobRadar/actions/runs/29695553185) completed every job successfully |
+| Release workflow | Pass | [Run 29695749515](https://github.com/auster-vn/JobRadar/actions/runs/29695749515) published the model and all three images successfully |
+| Live production | Pass | [Deploy 29695894275](https://github.com/auster-vn/JobRadar/actions/runs/29695894275) passed migration, internal health and private HTTPS smoke at the tailnet URL |
 
 ## Collection Evidence
 
@@ -57,6 +58,12 @@ nonpositive endpoints as undisclosed, with regression coverage for both
 upper-bound and range forms. The adapter retains robots, throttling, declared
 identity and fail-closed challenge handling; it does not solve CAPTCHAs or use
 proxy rotation.
+
+After production activation, TopCV batch
+`4f493de4-5a15-441a-b8be-23aaaf02df45` ran through the production Celery queue.
+It parsed 48 public jobs, updated all 48 idempotently, inserted no duplicates and
+completed with zero errors. The public production jobs API reports all 690
+retained TopCV records.
 
 Repeated collection preserves one salary observation per source posting. A
 later payload that hides salary cannot erase an earlier valid disclosure, and
@@ -131,7 +138,7 @@ local and GitHub release encoders produced the same canonical vocabulary digest,
 The following checks were completed on 2026-07-19:
 
 - Ruff lint and formatting, plus strict mypy over 103 source files;
-- 261 backend/unit/integration tests with 80.72% coverage and the 70% threshold
+- 265 backend/unit/integration tests with 80.62% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
@@ -148,44 +155,48 @@ The following checks were completed on 2026-07-19:
 ## Remote Delivery Evidence
 
 GitHub CI run
-[`29686395582`](https://github.com/auster-vn/JobRadar/actions/runs/29686395582)
+[`29695553185`](https://github.com/auster-vn/JobRadar/actions/runs/29695553185)
 passed backend, frontend, browser E2E, infrastructure, ML contract, ML
 publication and all three container builds at
-`c0e859e797752cfc0959f32f5ea888e060cda0f5`.
+`12a5d99b39b9d76c9e2e976d9390485facd5cbff`.
 
 Dependent Release run
-[`29686499805`](https://github.com/auster-vn/JobRadar/actions/runs/29686499805)
+[`29695749515`](https://github.com/auster-vn/JobRadar/actions/runs/29695749515)
 reconstructed 3,208 rows, published MLflow run
-`27628985c428472caad3f7ac8c675e96` at the same source revision with 11.8803047%
-MAPE, and built/pushed backend, web and seeded ML images. Release completed
-successfully. It triggered independent Deploy run
-[`29686670649`](https://github.com/auster-vn/JobRadar/actions/runs/29686670649),
-which failed before SSH with `PRODUCTION_HOST is required` under the superseded
-Hetzner-only workflow.
+`ea4f8bd74b724868abae29cf123a50b9` at the same source revision with
+11.8803047% MAPE, `data_ready=1`, six test segments and 69 holdout rows. Backend,
+web and seeded ML images were published under the immutable commit tag.
+
+Deploy run
+[`29695894275`](https://github.com/auster-vn/JobRadar/actions/runs/29695894275)
+then activated that exact revision on the repository-scoped
+`cp-jobradar-production` runner. Alembic is at
+`007_dedupe_salary_sources (head)`; migration, salary-data and salary-model
+one-shot services all exited zero; ML health loaded a published artifact whose
+40-character `source_revision` matches the active release; and the external
+readiness, dashboard, jobs and salary routes passed HTTPS smoke through
+Tailscale Serve.
+
+Runtime verification also established:
 
 - the GitHub `production` Environment permits deployment only from `main`;
-- generated application secrets are configured in the protected Environment;
-- the paid Hetzner path is retained only as a manual fallback, and its temporary
-  runner-only SSH rule passed a live API contract probe without creating a host;
-- the three reviewed scraper flags are enabled; and
-- the private workstation has not yet started Docker or Tailscale, registered the
-  `jobradar-production` runner, or established its `.ts.net` endpoint.
+- Docker and Tailscale are enabled and active; the repo-scoped runner is online,
+  persistent and labeled `jobradar-production`;
+- only Next.js is published, at `127.0.0.1:3000`; all other services remain on
+  the Compose network and every active container uses the bounded `local` log
+  driver;
+- Prometheus loaded six rules, Grafana loaded one Prometheus datasource and five
+  dashboards, and the production Grafana credential authenticates successfully;
+- a custom-format backup was created as the unprivileged host UID with mode 600
+  and passed `pg_restore --list`; and
+- all three Playwright workflows passed directly against the production URL,
+  after which the synthetic E2E account was removed.
 
-This is an incomplete deployment gate; the successful artifact Release is not
-presented as production evidence.
+## Production Gate Closure
 
-## Remaining Production Gates
-
-1. Enable Docker and Tailscale on the workstation, authorize its Tailscale node,
-   configure persistent Serve ingress to `127.0.0.1:3000`, and establish at
-   least 10 GiB free under Docker's data root.
-2. Register a persistent repository runner with label `jobradar-production`,
-   then configure its exact `DOMAIN`, `PRODUCTION_URL`, home-scoped
-   `DEPLOY_ROOT`, and monitored scraper contact in the protected Environment.
-3. Rerun Deploy for the immutable SHA and pass migration, internal health,
-   salary-model availability, private API smoke, and essential browser E2E.
-4. Record the private production URL and successful Deploy run, then confirm a
-   clean worktree with local `main` equal to `origin/main`.
-
-Until those gates have direct evidence, JobRadar remains locally validated but
-not production-complete.
+All production gates defined by the implementation plan are closed for the
+documented private target. The three reviewed scraper flags are enabled,
+immutable release rollback state is retained, and the live URL is recorded
+above. The optional public-cloud path and high availability are outside this
+single-operator deployment scope; they are not hidden prerequisites for the
+accepted target.

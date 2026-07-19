@@ -27,7 +27,7 @@ jobs:
       PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
       HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
       HCLOUD_FIREWALL_NAME: ${{ vars.HCLOUD_FIREWALL_NAME || 'jobradarvn-production-firewall' }}
-      DOMAIN: ${{ secrets.DOMAIN }}
+      DOMAIN: ${{ vars.DOMAIN }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}

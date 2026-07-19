@@ -237,6 +237,7 @@ jobs:
             (.services.web.ports[0].published == "3000") and
             (.services.web.ports[0].target == 3000) and
             (.services.backup.user == "1000:1000") and
+            (.services.backup.depends_on.migrate.condition == "service_completed_successfully") and
             ([.services[] | .logging.driver] | all(. == "local"))
           ' "$config"
       - run: python scripts/validate_monitoring.py

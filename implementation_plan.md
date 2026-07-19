@@ -1755,8 +1755,8 @@ MVP is **done** when ALL of the following pass:
 - [x] Rate limiting: auth-aware (anon vs authenticated)
 - [x] Load test with k6 (target: 100 RPS, p95 < 500ms)
 - [x] Full documentation (README + API docs + data dictionary)
-- [ ] Deploy: release immutable Compose stack on the private self-hosted runner, expose only through Tailscale Serve, and pass production smoke/E2E
+- [x] Deploy: immutable Compose stack active on the private self-hosted runner; Tailscale-only production smoke and direct browser E2E pass
 
 ---
 
-*Version 1.7 - PRIVATE PRODUCTION DEPLOYMENT IN PROGRESS | 2026-07-19 | Acceptance evidence in `docs/completion_audit.md`*
+*Version 1.8 - PRIVATE PRODUCTION COMPLETE | 2026-07-19 | Acceptance evidence in `docs/completion_audit.md`*

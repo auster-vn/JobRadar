@@ -296,14 +296,14 @@ the `main` branch. Set these environment variables:
 - `ENABLE_ITVIEC_SCRAPER`, `ENABLE_TOPCV_SCRAPER`, and
   `ENABLE_VIETNAMWORKS_SCRAPER` only after a current live source probe.
 
-Set `DOMAIN` to the exact Tailscale DNS name without `https://` or a trailing
-dot. Store it with `DB_PASSWORD`, `JWT_SECRET_KEY`, `ADMIN_API_KEY`,
-`CV_ENCRYPTION_KEY`, and `GRAFANA_ADMIN_PASSWORD` as Environment secrets;
-`GRAFANA_ADMIN_USER` defaults to `admin`. Generate independent URL-safe values
-without whitespace. The CV key must contain at least 32 characters and must be
-retained outside the host because database backups cannot recover a lost key.
-Optional secrets are `LINKEDIN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SMTP_HOST`,
-`SMTP_PORT`, `SMTP_USER`, and `SMTP_PASSWORD`.
+Set the `DOMAIN` Environment variable to the exact Tailscale DNS name without
+`https://` or a trailing dot. Store `DB_PASSWORD`, `JWT_SECRET_KEY`,
+`ADMIN_API_KEY`, `CV_ENCRYPTION_KEY`, and `GRAFANA_ADMIN_PASSWORD` as Environment
+secrets; `GRAFANA_ADMIN_USER` defaults to `admin`. Generate independent URL-safe
+values without whitespace. The CV key must contain at least 32 characters and
+must be retained outside the host because database backups cannot recover a lost
+key. Optional secrets are `LINKEDIN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`,
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, and `SMTP_PASSWORD`.
 
 ### GitHub Actions release and deployment
 
@@ -322,6 +322,12 @@ private HTTPS smoke checks cover readiness, the dashboard, jobs, and salary
 routes. Failure restores the previous release and leaves the workflow failed.
 Release success alone is never production evidence.
 
+The runner intentionally uses a restrictive umask. Installation grants read
+access only to non-secret configuration bind mounts, while `.env` remains mode
+600. Deployment also synchronizes and verifies the Grafana administrator
+credential on every activation and recovery so an existing Grafana volume
+cannot retain a stale bootstrap password.
+
 Before pulling, deployment removes dangling images and requires at least 10 GiB
 free under both the deployment root and Docker data root. `MIN_FREE_DISK_MB` and
 `MIN_DOCKER_FREE_DISK_MB` may adjust those thresholds only for a deliberately
@@ -337,8 +343,10 @@ root="$HOME/.local/share/jobradarvn"
 bash "$root/current/scripts/prune_production_releases.sh" "$root" 5
 ```
 
-The `backup` service writes an atomic PostgreSQL custom-format dump every 24
-hours to `$DEPLOY_ROOT/backups` and retains 14 days. Configure
+After migration succeeds, the `backup` service writes an atomic PostgreSQL
+custom-format dump every 24 hours to `$DEPLOY_ROOT/backups` and retains 14 days.
+The workflow runs this container as the deployment user's UID/GID, so completed
+dumps are host-readable by that operator and remain mode 600. Configure
 `BACKUP_INTERVAL_SECONDS` and `BACKUP_RETENTION_DAYS` when needed. Copy dumps to
 off-host encrypted storage; local retention is not disaster recovery. Restore
 into a disposable instance first with `pg_restore --clean --if-exists

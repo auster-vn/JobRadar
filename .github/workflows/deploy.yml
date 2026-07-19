@@ -27,7 +27,7 @@ jobs:
       url: ${{ vars.PRODUCTION_URL }}
     env:
       DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/cp/.local/share/jobradarvn' }}
-      DOMAIN: ${{ secrets.DOMAIN }}
+      DOMAIN: ${{ vars.DOMAIN }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
       ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}

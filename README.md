@@ -12,21 +12,21 @@ experience, and disclosed salaries, then serves job discovery, market analytics,
 salary benchmarks, matching, and alerts through a FastAPI API and a Vietnamese
 Next.js dashboard.
 
-> **Project status:** the measured MVP runs locally and the salary-model
-> publication gate now passes on a clean database: 11.88% MAPE against a fixed
-> 15% maximum with `data_readiness=true`. GitHub CI passes, and release retraining
-> plus all three GHCR image builds pass. Production is being moved to a private
-> self-hosted target exposed only through Tailscale Serve; host services, the
-> repository runner, and the private smoke test still have to pass. No live
-> deployment is claimed until that evidence exists. See the
-> [completion audit](docs/completion_audit.md) for current evidence.
+> **Project status:** production-ready for the private single-operator target.
+> At audited commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`, CI, release
+> retraining, all three immutable image builds, self-hosted deployment, migration,
+> internal health checks, private HTTPS smoke, backup verification, and direct
+> production browser E2E all pass. The published salary model has 11.88% MAPE
+> against the fixed 15% maximum with `data_readiness=true`. Production is
+> tailnet-only at <https://jobradar-production.tail92479f.ts.net>. See the
+> [completion audit](docs/completion_audit.md) for measured evidence.
 
 ## Capabilities
 
 | Area | What is implemented |
 |---|---|
 | Job discovery | Cursor-paginated search with title, skill, location, level, salary, and source filters |
-| Data collection | Robots-aware, fail-closed adapters for ITViec, TopCV, VietnamWorks, and the official LinkedIn API path |
+| Data collection | Robots-aware, fail-closed adapters for ITViec, TopCV, VietnamWorks, and the official LinkedIn API path; scheduled production collection is enabled for the three reviewed sources |
 | NLP | Bilingual title normalization, experience parsing, salary normalization, and a versioned 3,336-entry skill taxonomy |
 | Market intelligence | Hiring trends, skill demand, salary bands, company activity, and dbt-backed analytics marts |
 | Personalization | Encrypted CV extraction, pgvector similarity, deterministic skill matching, and role-level skill-gap analysis |
@@ -42,15 +42,15 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 261 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.72% |
+| Backend unit and integration tests | 265 passed |
+| Combined API, NLP, scraper, and ML coverage | 80.62% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
-| Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
-| Salary publication | Pass locally: 11.88% MAPE vs. 15% maximum; readiness pass |
-| GitHub CI | [Run 29686395582](https://github.com/auster-vn/JobRadar/actions/runs/29686395582) passed every job |
-| Release model and images | [Run 29686499805](https://github.com/auster-vn/JobRadar/actions/runs/29686499805) passed |
-| Live production deployment | [Deploy 29686670649](https://github.com/auster-vn/JobRadar/actions/runs/29686670649) blocked at the retired SSH-target preflight; private self-host setup is in progress |
+| Frontend E2E | 3 Playwright workflows passed in CI and directly against production on desktop/mobile paths |
+| Salary publication | Pass in CI, release and production: 11.88% MAPE vs. 15% maximum; readiness pass |
+| GitHub CI | [Run 29695553185](https://github.com/auster-vn/JobRadar/actions/runs/29695553185) passed every job |
+| Release model and images | [Run 29695749515](https://github.com/auster-vn/JobRadar/actions/runs/29695749515) passed |
+| Live production deployment | [Deploy 29695894275](https://github.com/auster-vn/JobRadar/actions/runs/29695894275) passed at the private Tailscale URL |
 
 ## Architecture
 
@@ -348,12 +348,13 @@ application port is exposed to the LAN or public Internet. GitHub Actions builds
 commit-addressed GHCR images and deploys immutable release directories with
 health checks, private HTTPS smoke testing, and rollback.
 
-The release pipeline has retrained the revision-bound model and published all
-three images for commit `c0e859e797752cfc0959f32f5ea888e060cda0f5`. Live
-production is not yet claimed because the local Docker/Tailscale services and
-self-hosted runner have not completed a Deploy run. The Terraform module and
-manual `Deploy Hetzner` workflow remain an optional paid public-host fallback.
-Follow
+The release pipeline retrained the revision-bound model and published all three
+images for commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`. The dependent
+self-hosted deployment passed Alembic migration, exact-revision model loading,
+API/ML/monitoring health, private HTTPS smoke, and rollback retention. Direct
+Playwright checks also passed against the live tailnet URL. The Terraform module
+and manual `Deploy Hetzner` workflow remain an optional paid public-host
+fallback. Follow
 [`docs/operations.md`](docs/operations.md) for the complete deployment, backup,
 restore, rotation, and rollback runbook.
 

@@ -530,6 +530,8 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     actionlint = (PROJECT_ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")
 
     assert "runs-on: [self-hosted, linux, x64, jobradar-production]" in deploy
+    assert "DOMAIN: ${{ vars.DOMAIN }}" in deploy
+    assert "DOMAIN: ${{ secrets.DOMAIN }}" not in deploy
     assert "tailscale status --json" in deploy
     assert "self-hosted" in deploy
     assert "HCLOUD_TOKEN" not in deploy
@@ -543,6 +545,7 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     ).read_text(encoding="utf-8")
     assert "Validate private self-hosted ingress" in ci
     assert '(.services.backup.user == "1000:1000")' in ci
+    assert '.services.backup.depends_on.migrate.condition == "service_completed_successfully"' in ci
     assert '(.services | has("caddy") | not)' in ci
     assert 'all(. == "local")' in ci
     assert "jobradar-production" in actionlint
