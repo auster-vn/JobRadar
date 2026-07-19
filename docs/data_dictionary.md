@@ -32,8 +32,10 @@ into a newer month. `is_active` is lifecycle state, not a deletion marker.
 
 `stg_itviec_jobs`, `stg_topcv_jobs` and `stg_vietnamworks_jobs` validate source
 records. `int_unified_jobs`,
-`salary_market_data` unions live disclosed salaries with licensed VietJobs
-observations while retaining source and snapshot date. `int_salary_normalized`
+`salary_market_data` unions live disclosed salaries with licensed historical
+observations while retaining source and snapshot date. A matching source and
+source-record ID is represented once with live features and the earliest known
+date. `int_salary_normalized`
 and `int_job_skills` establish reusable grains. The marts
 `mart_salary_bands`, `mart_skill_demand` and `mart_hiring_trends` power public
 analytics. dbt tests enforce positive salaries and source uniqueness. Private

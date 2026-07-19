@@ -55,3 +55,16 @@ def test_salary_data_readiness_explains_incomplete_snapshot() -> None:
     assert requirements["final_month_rows"]["passed"] is False
     assert requirements["duplicate_source_keys"]["passed"] is False
     assert requirements["non_vnd_rows"]["passed"] is False
+
+
+def test_salary_data_readiness_normalizes_primary_city_aliases() -> None:
+    rows = [
+        _row(index, 1 + index // 10, "Backend Developer", "Hồ Chí Minh (mới)")
+        for index in range(30)
+    ]
+
+    report = assess_salary_data_readiness(rows)
+
+    assert report["qualified_segments"] == 1
+    assert report["segment_candidates"] == 1
+    assert report["underqualified_segments"] == []

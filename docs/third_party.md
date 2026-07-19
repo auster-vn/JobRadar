@@ -21,6 +21,33 @@ date, so JobRadar treats the derivative as one October 2025 snapshot and never
 infers extra monthly history from the publisher's collection range. The 99 MB
 upstream CSV and local training artifacts are not committed.
 
+## TopCV 2026 IT salary observations
+
+The compact snapshot in `data/topcv_2026_it_salary_observations.csv` is a
+modified derivative of
+[`baocgb/vietnam-it-jobs-raw-data-from-topcv-2026`](https://www.kaggle.com/datasets/baocgb/vietnam-it-jobs-raw-data-from-topcv-2026),
+published by Kaggle user `baocgb` under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The attribution and
+change notice is retained in `licenses/TopCV-Kaggle-CC-BY-4.0.txt`.
+
+Dataset version 1 (`Kaggle dataset ID 9263561`) contains 1,550 IT job rows. Its
+raw CSV has SHA-256
+`e78ff2b6ed521ad894a70271a3254fcf434813916fdade4f7d449bc4fdf34ef9`.
+JobRadar retains 818 rows with disclosed monthly salary inside the model's
+1-200 million VND contract, converts 30 USD-denominated rows at the documented
+fixed rate of 25,000 VND/USD, normalizes title, experience and location, removes
+tracking parameters from source URLs, and keeps the supplied posting dates from
+2025-12-16 through 2026-01-15. Four parsed values outside the monthly contract
+are excluded rather than repaired or clipped.
+
+The tracked derivative has SHA-256
+`977b7da686d78e507b8424a28210d7746bfb3bb20acec1e0920cc1165de1be4e`.
+Every row records the upstream dataset, version, raw hash, license, canonical
+source URL, original salary currency and normalizer revisions in
+`source_metadata`. The raw Kaggle CSV is not committed. Reproduction requires
+the exact raw file and `scripts/export_topcv_salary_snapshot.py`; the exporter
+fails if its SHA-256 differs.
+
 ## MIND technology ontology
 
 The expanded technology taxonomy includes a modified snapshot of the
@@ -34,12 +61,13 @@ The exact upstream revision and resulting count are recorded in
 
 ## Operational source data
 
-JobRadar does not bundle a redistributable archive of ITViec, TopCV,
-VietnamWorks or LinkedIn postings. Their adapters are disabled by default and
-collect only when the operator enables a source after a current access-policy
-review. Robots rules, source throttling, fail-closed validation and deletion
-requests remain operational obligations; the repository's third-party dataset
-licenses do not grant rights to those live postings.
+JobRadar does not bundle its own raw archive of ITViec, TopCV, VietnamWorks or
+LinkedIn postings. The compact TopCV salary derivative above is distributed
+only under its upstream dataset attribution; that license does not grant rights
+to unrelated live postings. Source adapters are disabled by default and collect
+only when the operator enables a source after a current access-policy review.
+Robots rules, source throttling, fail-closed validation and deletion requests
+remain operational obligations.
 
 O*NET and other historical salary sources were evaluated but are not bundled.
 Rejection rationale and data-admission requirements are recorded in

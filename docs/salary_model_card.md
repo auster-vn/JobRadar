@@ -1,7 +1,8 @@
 # Salary Model Card
 
 - Last candidate evaluation: 2026-07-18
-- Last development diagnosis: 2026-07-18
+- Last development diagnosis: 2026-07-19
+- Last data-readiness audit: 2026-07-19
 
 ## Status
 
@@ -26,6 +27,11 @@ inference.
 - 1,115 licensed historical observations from the October 2025 VietJobs snapshot.
 - 172 valid disclosed VietnamWorks salaries dated June-July 2026.
 - 1,287 total rows; 1,115 training and 172 temporal evaluation rows.
+- The currently admissible retraining pool additionally includes 818 dated
+  TopCV IT salary observations from a provenance-pinned CC-BY-4.0 derivative.
+  Fifteen source IDs overlap salary-bearing live TopCV jobs and are merged, not
+  counted twice. This pool was audited for readiness but was not used to replace
+  the recorded candidate or consume a new final holdout.
 - Required-experience units are normalized before import; the latest snapshot
   corrected 281 rows that previously treated months or no requirement as years
   or missing values.
@@ -122,6 +128,18 @@ accuracy gap with the available history. They also make the inspected
 June-July period development validation data; it must not be represented as an
 untouched holdout in a subsequent model publication.
 
+After adding the licensed TopCV history, a second development-only check on
+2026-07-19 excluded every observation on or after 2026-07-11 before any model
+fit or metric inspection. The resulting 2,162-row pool used a complete-date
+temporal split at 2026-01-09: 1,723 fitting rows and 439 validation rows. It
+measured 32.82% MAPE, 8,094,537 VND MAE and 0.2743 R2, versus 58.05% MAPE for
+the training-median baseline. TopCV and VietnamWorks validation MAPE were both
+approximately 32.8%; canonical roles measured 31.05%, and unseen locations only
+1.59%. This rules out source identity or location coverage as the dominant
+error and confirms that the current feature/model/data combination remains far
+from the 15% gate. The experiment wrote only temporary development artifacts;
+it did not update publication evidence or inspect the reserved later period.
+
 ## Data Readiness for Retraining
 
 Before reconsidering publication, collect all of the following without bypassing
@@ -138,10 +156,10 @@ These conditions are enforced by `ml.salary.readiness`, included in every
 training result and artifact metadata, exposed through the admin API, and
 mirrored to Prometheus after retraining. The serving process rejects bundles
 without an explicit passing readiness report even when their MAPE is below 15%.
-The latest report has three distinct months, 401 canonical technical rows, two
-qualified and 83 underqualified segments among 85 candidates, and 84 rows in the
-latest month; duplicate-source and currency checks pass, but overall readiness
-remains false.
+The latest report has 2,285 unique rows across five distinct months, 948
+canonical technical rows, seven qualified and 126 underqualified segments among
+133 candidates, and 222 rows in the latest month. Duplicate-source, currency
+and latest-month checks pass, but overall readiness remains false.
 
 The next publication evaluation must freeze a later independent period before
 development begins. The 15% gate must not be lowered, and those holdout rows

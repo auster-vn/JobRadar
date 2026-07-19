@@ -35,8 +35,8 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 194 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.35% |
+| Backend unit and integration tests | 216 passed |
+| Combined API, NLP, scraper, and ML coverage | 81.03% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
@@ -128,9 +128,10 @@ readiness gates.
 
 The operational salary input is disclosed compensation from permitted job
 postings collected by the source adapters. It is not a dataset that an operator
-must supply manually. The bundled VietJobs snapshot is a provenance-pinned
-development baseline; it cannot manufacture live monthly coverage or satisfy
-the salary readiness gate by itself.
+must supply manually. The bundled VietJobs and TopCV derivatives provide 1,933
+provenance-pinned historical observations. They retain only publisher-supplied
+record dates and therefore cannot manufacture missing monthly coverage or
+satisfy the salary readiness gate by themselves.
 
 After reviewing the current source policy, enable only the approved adapters in
 `.env`. For a workstation that must accumulate operational observations across
@@ -162,7 +163,9 @@ fails closed if public cards are unavailable.
 
 Each source posting remains one salary sample even when it is scraped repeatedly.
 A later payload with hidden compensation cannot erase a valid disclosed range,
-and inactive postings remain available only to the time-bounded salary dataset.
+and a historical TopCV row is merged with the matching live `platform_job_id`
+instead of becoming a second training sample. Inactive postings remain available
+only to the time-bounded salary dataset.
 Inspect collection batches at `GET /api/admin/scrape/batches` and model coverage
 at `GET /api/admin/ml/data-readiness`.
 
@@ -274,7 +277,11 @@ pass. The main-branch publication job requires:
 
 The current candidate remains rejected, so the API returns observed market
 quantiles with source and period provenance or a deterministic cold-start
-fallback. Full methodology and limitations are in the
+fallback. After importing both pinned snapshots and deduplicating matching live
+jobs, the current retraining pool has 2,285 rows across five months, 948
+canonical technical rows and 222 rows in the latest month. It still fails the
+six-month, 1,000-row and segment-coverage gates, so no new final holdout was
+consumed and no model was published. Full methodology and limitations are in the
 [`salary model card`](docs/salary_model_card.md); machine-readable evidence is
 checked in at
 [`docs/evidence/salary_evaluation.json`](docs/evidence/salary_evaluation.json).

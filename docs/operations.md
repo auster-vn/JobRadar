@@ -133,15 +133,24 @@ metrics to make CI pass. Pull-request contract tests and image builds remain
 independent, while a failed main-branch publication job prevents automatic
 release.
 
-The historical salary baseline is derived from the MIT-licensed VinNLP VietJobs
-dataset at commit `ea140511b77935704e93d21c2973b72f46d48902`. The compact,
-reviewable snapshot is `data/vietjobs_it_salary_observations.csv` (SHA-256
-`f823fdb009c69ff9a2e8a367497936fcd7001adcfa60bc4dc0784d6c55ff357c`). Compose
-imports it idempotently after migrations, then backfills title, level and
-experience metadata for previously collected jobs. Observations retain the
-October 2025 snapshot date and never enter live job search results. Use `import_vietjobs.py`
-and `export_vietjobs_salary_snapshot.py` only to reproduce the derived snapshot
-from the pinned 99 MB upstream CSV.
+The historical salary baseline has two compact, reviewable derivatives:
+
+- `data/vietjobs_it_salary_observations.csv`: 1,115 rows from the MIT-licensed
+  VinNLP VietJobs dataset at commit
+  `ea140511b77935704e93d21c2973b72f46d48902`, SHA-256
+  `f823fdb009c69ff9a2e8a367497936fcd7001adcfa60bc4dc0784d6c55ff357c`.
+- `data/topcv_2026_it_salary_observations.csv`: 818 rows derived from version 1
+  of the CC-BY-4.0 Kaggle dataset
+  `baocgb/vietnam-it-jobs-raw-data-from-topcv-2026`, SHA-256
+  `977b7da686d78e507b8424a28210d7746bfb3bb20acec1e0920cc1165de1be4e`.
+
+Compose verifies both hashes and imports all 1,933 rows idempotently after
+migrations, then backfills experience, location, title and level for previously
+collected jobs. A TopCV observation and live job with the same source ID become
+one model row using the earliest observed date; re-import also retains that
+earliest date. Historical observations never enter live job search results. Use
+`export_vietjobs_salary_snapshot.py` or `export_topcv_salary_snapshot.py` only
+with the pinned upstream inputs described in `docs/third_party.md`.
 
 Do not infer observation dates from dataset coverage ranges, application
 deadlines, file modification times or repository commit dates. Admit a new
@@ -154,7 +163,9 @@ must not increase readiness month counts or enter a temporal evaluation split.
 snapshot value, and non-empty `dataset`, `dataset_commit` and `license`
 provenance before opening a database transaction.
 
-The July 2026 source review rejected `jasong03/salary`: revision
+The July 2026 source review admitted the dated TopCV Kaggle derivative above
+because version, license, stable source IDs, units and row-level dates are all
+auditable. It rejected `jasong03/salary`: revision
 `8257f706719e9aefadcef090efbe2ddb4a269390` publishes only `data.txt`, without a
 dataset card or license metadata. VietJobs remains admissible under MIT, but its
 public CSV has no date column; the publisher's July-October coverage statement
@@ -163,8 +174,8 @@ therefore cannot be expanded into per-record monthly observations. The
 was also rejected: its page labels the dataset MIT while its own description
 limits redistribution and does not identify the data owner. Commercial
 [Techmap Vietnam feeds](https://jobdatafeeds.com/data/countries/vn) provide
-dated history but require an owner-approved contract and schema review before
-use. These decisions preserve the single October snapshot used by JobRadar.
+additional dated history but require an owner-approved contract and schema
+review before use.
 
 Salary training uses complete observation dates for a temporal holdout only
 when both sides meet the minimum sample sizes. A single-snapshot dataset falls
@@ -172,8 +183,11 @@ back to a deterministic split derived from stable source record keys and records
 that strategy in MLflow. Text and categorical vocabularies are fitted on the
 training partition only. Quantile offsets use three-fold out-of-fold residuals
 from that same training partition and never the evaluation holdout. Training
-data retains disclosed salaries for six months after collection even when the
-vacancy becomes inactive; inactive vacancies remain absent from job search.
+data retains disclosed live salaries for six months and licensed historical
+observations for 24 months even when the vacancy becomes inactive. When both
+represent the same source ID, live features are retained with the earliest
+observed date and the historical retention window; inactive vacancies remain
+absent from job search.
 Candidate artifacts must survive a serialize/load prediction round-trip and
 pass MAPE at 15% before `artifacts/salary/current` is written.
 
@@ -183,6 +197,10 @@ three months for every observed primary-city role/level segment, 200 rows in the
 latest month, unique source keys and fully normalized VND amounts. Inspect the
 live report at `GET /api/admin/ml/data-readiness`. Retraining persists the report
 to Redis so Prometheus and the Product dashboard expose the same evidence.
+The 2026-07-19 local report contains 2,285 unique rows across five months, 948
+canonical technical rows, seven qualified and 126 underqualified segments among
+133 candidates, and 222 latest-month rows. Duplicate-key, currency and final
+month checks pass; overall readiness remains false.
 
 With k6 installed, execute
 `BASE_URL=http://localhost:8001 k6 run tests/load/jobs.js`. `BASE_URL` is

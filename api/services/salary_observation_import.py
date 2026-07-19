@@ -1,7 +1,8 @@
 from collections.abc import Sequence
 from datetime import date, datetime
 
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import func
+from sqlalchemy.dialects.postgresql import Insert, insert
 
 from api.core.database import session_factory
 from api.models import SalaryObservation
@@ -56,11 +57,20 @@ async def import_salary_observations(rows: Sequence[dict[str, object]]) -> int:
     imported = 0
     async with session_factory() as session, session.begin():
         for offset in range(0, len(rows), 500):
-            statement = insert(SalaryObservation).values(rows[offset : offset + 500])
-            statement = statement.on_conflict_do_update(
-                constraint="uq_salary_observation_source_id",
-                set_={field: getattr(statement.excluded, field) for field in UPDATABLE_FIELDS},
-            )
+            statement = _upsert_statement(rows[offset : offset + 500])
             result = await session.execute(statement)
             imported += result.rowcount  # type: ignore[attr-defined]
     return imported
+
+
+def _upsert_statement(rows: Sequence[dict[str, object]]) -> Insert:
+    statement = insert(SalaryObservation).values(rows)
+    updated_fields = {field: getattr(statement.excluded, field) for field in UPDATABLE_FIELDS}
+    updated_fields["source_snapshot_date"] = func.least(
+        SalaryObservation.source_snapshot_date,
+        statement.excluded.source_snapshot_date,
+    )
+    return statement.on_conflict_do_update(
+        constraint="uq_salary_observation_source_id",
+        set_=updated_fields,
+    )

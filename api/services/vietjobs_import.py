@@ -5,17 +5,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from nlp.experience_parser import parse_experience_years
+from nlp.location_normalizer import LOCATION_NORMALIZER_REVISION, normalize_primary_location
 from nlp.title_normalizer import TITLE_NORMALIZER_REVISION, normalize_title
 
 IT_CATEGORY = "công_nghệ_thông_tin_kỹ_thuật_số"
 SOURCE = "vietjobs_vinuniversity"
 SOURCE_SNAPSHOT_DATE = date(2025, 10, 31)
-
-LOCATION_NAMES = {
-    "hà nội": "Ha Noi",
-    "hồ chí minh": "Ho Chi Minh",
-    "đà nẵng": "Da Nang",
-}
 
 
 def _list_field(value: str) -> list[str]:
@@ -65,7 +60,6 @@ def parse_vietjobs_row(row: dict[str, str]) -> dict[str, object] | None:
         ensure_ascii=False,
         sort_keys=True,
     )
-    raw_location = row.get("location", "").strip().casefold()
     return {
         "source": SOURCE,
         "source_record_id": hashlib.sha256(identity.encode()).hexdigest(),
@@ -73,7 +67,7 @@ def parse_vietjobs_row(row: dict[str, str]) -> dict[str, object] | None:
         "title": title,
         "title_normalized": normalized.title,
         "job_level": normalized.level,
-        "location": LOCATION_NAMES.get(raw_location, row.get("location", "").strip().title()),
+        "location": normalize_primary_location(row.get("location", "")),
         "experience_years_min": experience_min,
         "experience_years_max": experience_max,
         "skills": skills,
@@ -84,6 +78,7 @@ def parse_vietjobs_row(row: dict[str, str]) -> dict[str, object] | None:
             "dataset": "dinhieufam/VietJobs",
             "dataset_commit": "ea140511b77935704e93d21c2973b72f46d48902",
             "license": "MIT",
+            "location_normalizer_revision": LOCATION_NORMALIZER_REVISION,
             "title_normalizer_revision": TITLE_NORMALIZER_REVISION,
         },
     }

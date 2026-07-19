@@ -10,6 +10,7 @@ from sqlalchemy.dialects.postgresql import insert
 from api.core.config import get_settings
 from api.core.database import session_factory
 from api.models import Company, Job, RawJob, ScrapeBatch
+from nlp.location_normalizer import normalize_locations
 from nlp.salary_parser import parse_salary
 from nlp.skill_extractor import extract_skills
 from nlp.title_normalizer import normalize_title
@@ -34,6 +35,7 @@ async def _upsert_job(item: RawJobValidator) -> tuple[uuid.UUID, bool]:
     extracted = extract_skills(" ".join([item.title, item.description or "", *item.skills]))
     required_skills = sorted({*item.skills, *extracted.required})
     normalized_company = _normalize_company(item.company_name)
+    normalized_locations = normalize_locations(item.location)
 
     async with session_factory() as session, session.begin():
         existing_id = await session.scalar(
@@ -85,7 +87,7 @@ async def _upsert_job(item: RawJobValidator) -> tuple[uuid.UUID, bool]:
             title_normalized=title.title,
             job_level=job_level,
             job_type=item.job_type,
-            location=item.location,
+            location=normalized_locations,
             salary_min=salary.min_vnd,
             salary_max=salary.max_vnd,
             salary_negotiable=salary.negotiable,
@@ -115,7 +117,7 @@ async def _upsert_job(item: RawJobValidator) -> tuple[uuid.UUID, bool]:
                     "title_normalized": title.title,
                     "job_level": job_level,
                     "job_type": item.job_type,
-                    "location": item.location,
+                    "location": normalized_locations,
                     "salary_min": case(
                         (incoming_salary_disclosed, job_statement.excluded.salary_min),
                         else_=Job.salary_min,

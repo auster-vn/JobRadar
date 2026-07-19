@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
 
+from nlp.location_normalizer import normalize_location
 from nlp.title_normalizer import canonical_role
 
 MIN_DISTINCT_MONTHS = 6
@@ -43,7 +44,7 @@ def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, An
         if role is None:
             continue
         canonical_rows += 1
-        location = str(row.get("location") or "")
+        location = normalize_location(str(row.get("location") or "")) or ""
         if location not in PRIMARY_CITIES:
             continue
         key = (role, str(row.get("job_level") or "mid"), location)

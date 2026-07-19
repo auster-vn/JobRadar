@@ -18,23 +18,46 @@ MIN_TEST_ROWS = 50
 MAPE_PUBLICATION_LIMIT = 0.15
 CALIBRATION_FOLDS = 3
 SALARY_ROWS_SQL = """
-WITH salary_rows AS (
-  SELECT platform || ':' || platform_job_id AS source_key,
-    platform AS source, true AS is_live, title, title_normalized,
-    job_level, location[1] AS location,
-    coalesce(experience_years_min, 0) AS experience_years,
-    skills_required, posted_at::date AS source_snapshot_date,
-    salary_currency, salary_min, salary_max
-  FROM jobs
+WITH historical_dates AS (
+  SELECT source, source_record_id, min(source_snapshot_date) AS first_observed_on
+  FROM salary_observations
   WHERE salary_min IS NOT NULL OR salary_max IS NOT NULL
+  GROUP BY source, source_record_id
+),
+salary_rows AS (
+  SELECT jobs.platform || ':' || jobs.platform_job_id AS source_key,
+    jobs.platform AS source, true AS is_live,
+    historical_dates.first_observed_on IS NOT NULL AS retained_history,
+    jobs.title, jobs.title_normalized, jobs.job_level, jobs.location[1] AS location,
+    coalesce(jobs.experience_years_min, 0) AS experience_years,
+    jobs.skills_required,
+    coalesce(
+      least(jobs.posted_at::date, historical_dates.first_observed_on),
+      jobs.posted_at::date,
+      historical_dates.first_observed_on
+    ) AS source_snapshot_date,
+    jobs.salary_currency, jobs.salary_min, jobs.salary_max
+  FROM jobs
+  LEFT JOIN historical_dates
+    ON historical_dates.source = jobs.platform
+   AND historical_dates.source_record_id = jobs.platform_job_id
+  WHERE jobs.salary_min IS NOT NULL OR jobs.salary_max IS NOT NULL
   UNION ALL
   SELECT source || ':' || source_record_id AS source_key,
-    source, false AS is_live, title, title_normalized, job_level, location,
+    source, false AS is_live, true AS retained_history,
+    title, title_normalized, job_level, location,
     coalesce(experience_years_min, 0) AS experience_years,
     skills AS skills_required, source_snapshot_date, 'VND' AS salary_currency,
     salary_min, salary_max
-  FROM salary_observations
-  WHERE salary_min IS NOT NULL OR salary_max IS NOT NULL
+  FROM salary_observations AS observations
+  WHERE (salary_min IS NOT NULL OR salary_max IS NOT NULL)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM jobs
+      WHERE jobs.platform = observations.source
+        AND jobs.platform_job_id = observations.source_record_id
+        AND (jobs.salary_min IS NOT NULL OR jobs.salary_max IS NOT NULL)
+    )
 )
 SELECT source_key, source, is_live, title, title_normalized, job_level,
   location, experience_years, skills_required, source_snapshot_date,
@@ -50,9 +73,12 @@ WHERE source_snapshot_date IS NOT NULL
     ELSE coalesce(salary_min, salary_max)
   END BETWEEN 1000000 AND 200000000
   AND (
-    (is_live AND source_snapshot_date >= current_date - interval '6 months')
+    (
+      is_live AND NOT retained_history
+      AND source_snapshot_date >= current_date - interval '6 months'
+    )
     OR (
-      NOT is_live
+      (NOT is_live OR retained_history)
       AND source_snapshot_date >= current_date - interval '24 months'
     )
   )

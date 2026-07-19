@@ -70,8 +70,11 @@ services:
       - /bin/sh
       - -ec
       - |
-        python scripts/import_salary_snapshot.py data/vietjobs_it_salary_observations.csv
+        python scripts/import_salary_snapshot.py \
+          data/vietjobs_it_salary_observations.csv \
+          data/topcv_2026_it_salary_observations.csv
         python scripts/backfill_job_experience.py
+        python scripts/backfill_job_locations.py
         python scripts/backfill_job_titles.py
     environment: *backend-env
     depends_on:

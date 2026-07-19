@@ -1,8 +1,12 @@
 from datetime import date, datetime
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
-from api.services.salary_observation_import import validate_salary_observation_provenance
+from api.services.salary_observation_import import (
+    _upsert_statement,
+    validate_salary_observation_provenance,
+)
 
 
 def _row() -> dict[str, object]:
@@ -20,6 +24,16 @@ def _row() -> dict[str, object]:
 
 def test_salary_observation_provenance_accepts_auditable_source() -> None:
     validate_salary_observation_provenance([_row()])
+
+
+def test_salary_observation_upsert_retains_earliest_observation_date() -> None:
+    statement = _upsert_statement([_row()])
+
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert (
+        "source_snapshot_date = least(salary_observations.source_snapshot_date, "
+        "excluded.source_snapshot_date)" in compiled
+    )
 
 
 @pytest.mark.parametrize("field", ["dataset", "dataset_commit", "license"])

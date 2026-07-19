@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+from nlp.location_normalizer import normalize_location
 from nlp.title_normalizer import canonical_role
 
 
@@ -36,7 +37,7 @@ class SalaryFeatureEncoder:
         return [
             [
                 str(row.get("job_level") or "mid"),
-                str(row.get("location") or "unknown"),
+                normalize_location(str(row.get("location") or "")) or "unknown",
                 canonical_role(row.get("title_normalized")) or "other",
             ]
             for row in rows

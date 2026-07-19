@@ -1,3 +1,4 @@
+import importlib
 from datetime import date, timedelta
 
 from ml.salary.training import (
@@ -33,6 +34,16 @@ def test_live_salary_query_keeps_one_observation_per_job() -> None:
     assert "unnest(location)" not in SALARY_ROWS_SQL
     assert "END BETWEEN 1000000 AND 200000000" in SALARY_ROWS_SQL
     assert "WHERE is_active" not in SALARY_ROWS_SQL
+    assert "min(source_snapshot_date) AS first_observed_on" in SALARY_ROWS_SQL
+    assert "historical_dates.source_record_id = jobs.platform_job_id" in SALARY_ROWS_SQL
+    assert "NOT EXISTS" in SALARY_ROWS_SQL
+    assert "NOT is_live OR retained_history" in SALARY_ROWS_SQL
+
+
+def test_salary_view_applies_historical_retention_to_linked_live_rows() -> None:
+    migration = importlib.import_module("migrations.versions.007_dedupe_salary_sources")
+
+    assert "historical_dates.first_observed_on IS NULL AS is_live" in (migration.DEDUPLICATED_VIEW)
 
 
 def _row(index: int, observed_on: date) -> dict[str, object]:

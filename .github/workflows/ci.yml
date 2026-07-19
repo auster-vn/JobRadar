@@ -44,8 +44,12 @@ jobs:
       - run: uv run python scripts/evaluate_skill_extractor.py --output artifacts/nlp/metrics.json
       - run: uv run alembic upgrade head
       - run: uv run python scripts/seed_ci_data.py
-      - run: uv run python scripts/import_salary_snapshot.py data/vietjobs_it_salary_observations.csv
+      - run: >-
+          uv run python scripts/import_salary_snapshot.py
+          data/vietjobs_it_salary_observations.csv
+          data/topcv_2026_it_salary_observations.csv
       - run: uv run python scripts/backfill_job_experience.py
+      - run: uv run python scripts/backfill_job_locations.py
       - run: uv run python scripts/backfill_job_titles.py
       - run: uv run pytest --cov=api --cov=nlp --cov=scrapers --cov=ml --cov-fail-under=70
       - run: uv run dbt deps --project-dir analytics --profiles-dir analytics
@@ -107,7 +111,11 @@ jobs:
       - run: uv sync
       - run: uv run alembic upgrade head
       - run: uv run python scripts/seed_ci_data.py
-      - run: uv run python scripts/import_salary_snapshot.py data/vietjobs_it_salary_observations.csv
+      - run: >-
+          uv run python scripts/import_salary_snapshot.py
+          data/vietjobs_it_salary_observations.csv
+          data/topcv_2026_it_salary_observations.csv
+      - run: uv run python scripts/backfill_job_locations.py
       - name: Start API
         run: .venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000 > /tmp/jobradar-api.log 2>&1 &
       - run: npm ci

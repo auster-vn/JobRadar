@@ -1,6 +1,6 @@
 # Completion Audit
 
-Audit date: 2026-07-18
+Audit date: 2026-07-19
 
 This document records measured acceptance evidence against
 `implementation_plan.md`. A gate is only marked complete when the corresponding
@@ -15,7 +15,7 @@ runtime behavior was exercised; source files alone are not accepted as evidence.
 | `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
 | Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
 | dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 194 unit/integration tests pass with 80.35% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
+| Unit coverage at least 60% | Pass | 216 unit/integration tests pass with 81.03% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
 | Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
 
 MVP functionality and checkpoint verification are complete. Release gates that
@@ -26,7 +26,7 @@ depend on data maturity or external production credentials remain open below.
 | Phase | Status | Runtime evidence |
 |---|---|---|
 | Phase 0 - Validate | Pass | 630 parsed ITViec jobs; pgvector HNSW index active; 50-example skill benchmark F1 1.00; MiniLM 384d CPU p95 14.583 ms |
-| Phase 1 - Foundation | Pass | Strict Ruff/mypy, pre-commit, six Alembic revisions, Compose, Celery flow and health probes |
+| Phase 1 - Foundation | Pass | Strict Ruff/mypy, pre-commit, seven Alembic revisions, Compose, Celery flow and health probes |
 | Phase 2 - NLP and Data Engineering | Pass | 3,336-entry taxonomy, salary/title parsing, nine dbt models, 23 tests, freshness and scheduled Prefect/Celery orchestration |
 | Phase 3 - ML Pipeline | Partial | Leakage-safe features, calibrated quantiles, gated inference service, MLflow rejection logging, 1,003 embeddings, HNSW matching and skill-gap API exist; publication MAPE gate fails |
 | Phase 4 - Full Application | Pass | Latest full batches returned 499 ITViec and 377 TopCV jobs with zero errors; VietnamWorks returned 414 and retains 462 historical records; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
@@ -39,14 +39,17 @@ pre-commit and CI.
 
 ## Clean Database Audit
 
-The following sequence was run against a newly created `jobradar_clean_audit`
-database:
+The original sequence was run against a newly created `jobradar_clean_audit`
+database. On 2026-07-19, the current backend image repeated the migration and
+salary-import bootstrap against a separate empty ephemeral PostgreSQL 16
+instance:
 
-1. Alembic upgraded an empty database through `006_retain_salary_history`, creating
-   both `vector` and `pgcrypto` extensions and only the encrypted CV column. A
-   separate plaintext fixture was migrated to ciphertext, verified absent from
-   stored bytes, decrypted exactly, and removed after the test.
-2. The test seed and 1,115-row licensed salary snapshot imported successfully.
+1. Alembic upgraded an empty database through `007_dedupe_salary_sources`,
+   creating both `vector` and `pgcrypto` extensions and only the encrypted CV
+   column. A separate plaintext fixture was migrated to ciphertext, verified
+   absent from stored bytes, decrypted exactly, and removed after the test.
+2. Both provenance-pinned salary snapshots imported twice. The final table and
+   view each contained exactly 1,933 rows with zero duplicate source keys.
 3. The authenticated API integration workflow passed.
 4. dbt source freshness passed.
 5. dbt build completed with 32 passes, zero warnings and zero errors. A TopCV
@@ -95,7 +98,9 @@ into GitHub Actions.
 10. Salary retention migration upgrade/downgrade was exercised with an inactive
     disclosed-salary fixture. Revision `006` and its existing dbt dependent view
     retained the row; revision `005` excluded it; re-upgrade restored it without
-    dropping downstream views.
+    dropping downstream views. Revision `007` was separately downgraded to `006`
+    and re-upgraded; all 15 linked TopCV source IDs were represented once and
+    classified for the 24-month historical retention window.
 11. The release SHA is embedded in backend, ML and web images as both
     `SOURCE_REVISION` and the OCI revision label. The current ML image was rebuilt
     from `b6ae6418eb661cf19fbcff7f61b58a6995db8544`, and MLflow run
@@ -127,7 +132,8 @@ into GitHub Actions.
     first with a disclosed 20-30 million VND range and then with compensation
     omitted and a later posting date. Ingestion keeps the disclosed range and
     earliest `posted_at` while updating current listing metadata. The run above
-    passed this case among 194 tests with 80.35% coverage and dbt 32/32.
+    passed this case among the then-current 194 tests with 80.35% coverage and
+    dbt 32/32. The current full suite has 216 passes and 81.03% coverage.
 16. On 2026-07-18 the rebuilt ingestion image completed a live ten-page
     VietnamWorks batch with 414 jobs, zero errors, zero new rows and 414 updates.
     The operational database remained at 462 unique VietnamWorks
@@ -198,10 +204,10 @@ Data readiness is executable rather than documentation-only. Training,
 artifact metadata and serving require the same six-condition report;
 `GET /api/admin/ml/data-readiness`, four Prometheus gauges and the Product
 dashboard expose its state without weakening the publication gate. The runtime
-report currently records 1,482 rows across three months, 520 canonical technical
-rows, two qualified and 83 underqualified segments among 85 candidates, 233 rows
-in the latest month, no duplicate source keys and no non-VND rows; readiness is
-therefore false.
+report currently records 2,285 rows across five months, 948 canonical technical
+rows, seven qualified and 126 underqualified segments among 133 candidates, 222
+rows in the latest month, no duplicate source keys and no non-VND rows;
+readiness is therefore false.
 
 Meeting 15% requires a larger, more consistently labeled salary history or a
 revised model validated on an untouched temporal holdout. Lowering the gate or
@@ -231,7 +237,30 @@ Beat to append new source IDs to PostgreSQL every day. Repeated scrapes keep one
 sample per posting, cannot manufacture additional months and cannot erase an
 earlier disclosed salary when a source later hides it.
 
-The 2026-07-18 public-source review found no admissible shortcut. The
+The 2026-07-19 source review admitted one additional auditable historical
+source: version 1 of
+[`baocgb/vietnam-it-jobs-raw-data-from-topcv-2026`](https://www.kaggle.com/datasets/baocgb/vietnam-it-jobs-raw-data-from-topcv-2026)
+is CC-BY-4.0, has stable TopCV IDs and row-level posting dates, and produced 818
+valid disclosed-salary observations for December 2025 and January 2026. The raw
+and compact SHA-256 values are pinned in code and `docs/third_party.md`.
+Fifteen salary-bearing IDs overlap the live TopCV collection; migration `007`
+and training SQL merge them using live features and the earliest observed date,
+leaving zero duplicate training source keys. The added data improves temporal
+coverage without inventing dates, but still leaves readiness at five of six
+months and 948 of 1,000 canonical rows.
+
+A development-only retraining diagnostic then excluded all observations on or
+after 2026-07-11 before fitting or inspecting metrics. Its 2,162-row pool used
+a complete-date temporal split at 2026-01-09 with 1,723 fitting and 439
+validation rows. MAPE remained 32.82% against a 58.05% training-median
+baseline; TopCV and VietnamWorks source slices were both approximately 32.8%,
+canonical roles measured 31.05%, and unseen locations were only 1.59%. The
+result shows that the admitted TopCV history improves provenance and coverage
+but does not solve individual salary prediction accuracy. It is diagnostic
+development evidence only, was written outside the repository and did not
+replace the rejected candidate or inspect the reserved later period.
+
+The same review found no further admissible shortcut. The
 `jasong03/salary` Hugging Face repository has no dataset card or declared
 license, so its 33 MB text file was not downloaded or imported. The licensed
 VietJobs CSV exposes salary and job attributes but no record-level date; its

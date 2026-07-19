@@ -24,6 +24,8 @@ benchmarking. Expired listings remain available to the time-bounded salary
 dataset without being exposed as active jobs. Repeated collection keeps one
 sample per source posting: a payload with no disclosed compensation cannot erase
 an earlier valid range, and the earliest observed posting timestamp is retained.
+A licensed historical row matching a live source ID is merged into the same
+salary sample rather than duplicated across the two stores.
 
 ## Security boundaries
 
