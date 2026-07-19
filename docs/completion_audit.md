@@ -33,9 +33,9 @@ remain required. No production URL or successful deployment is claimed here.
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.66% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
 | Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
 | Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29678361931](https://github.com/auster-vn/JobRadar/actions/runs/29678361931) completed every job successfully |
-| Release workflow | Partial | [Run 29678660335](https://github.com/auster-vn/JobRadar/actions/runs/29678660335) passed model and image jobs, then failed deployment input validation |
-| Live production | Blocked | No host, DNS, production secrets or public endpoint exist for migration/API/browser smoke tests |
+| GitHub CI | Pass | [Run 29679893232](https://github.com/auster-vn/JobRadar/actions/runs/29679893232) completed every job successfully |
+| Release workflow | Pass | [Run 29680158274](https://github.com/auster-vn/JobRadar/actions/runs/29680158274) published the model and all three images successfully |
+| Live production | Blocked | [Deploy 29680312938](https://github.com/auster-vn/JobRadar/actions/runs/29680312938) failed before SSH because no host or DNS exists for smoke tests |
 
 ## Collection Evidence
 
@@ -142,35 +142,39 @@ The following checks were completed on 2026-07-19:
 ## Remote Delivery Evidence
 
 GitHub CI run
-[`29678361931`](https://github.com/auster-vn/JobRadar/actions/runs/29678361931)
+[`29679893232`](https://github.com/auster-vn/JobRadar/actions/runs/29679893232)
 passed backend, frontend, browser E2E, infrastructure, ML contract, ML
 publication and all three container builds at
-`b124dbecbced92544f820bd88a9454fe8b8b6b93`.
+`5b436b8858ad18151fd94dae991c74e06e7ac7ee`.
 
-Dependent release run
-[`29678660335`](https://github.com/auster-vn/JobRadar/actions/runs/29678660335)
+Dependent Release run
+[`29680158274`](https://github.com/auster-vn/JobRadar/actions/runs/29680158274)
 reconstructed 3,208 rows, published MLflow run
-`85017efab712402a930dfeea677b6902` at the same source revision with 11.6619927%
-MAPE, and built/pushed backend, web and seeded ML images. The overall workflow
-correctly failed before SSH with `PRODUCTION_HOST is required`. At that point:
+`4b75d70790274276bfe1cbcf8afaafe3` at the same source revision with 11.6619927%
+MAPE, and built/pushed backend, web and seeded ML images. Release completed
+successfully. It triggered independent Deploy run
+[`29680312938`](https://github.com/auster-vn/JobRadar/actions/runs/29680312938),
+which correctly failed before SSH with `PRODUCTION_HOST is required`.
 
-- the GitHub `production` Environment existed but had no protection rules;
-- no repository or environment Actions secrets were configured;
-- no repository Actions variables were configured; and
-- no local Hetzner token, production variable file, domain, host or SSH key was
-  available.
+- the GitHub `production` Environment permits deployment only from `main`;
+- a dedicated deploy key and generated application secrets are configured;
+- the three reviewed scraper flags are enabled; and
+- no local Hetzner token, production state, domain, host, pinned host key or
+  public endpoint is available.
 
-This is an external provisioning blocker, not a passed release/deployment gate.
+This is an external provisioning blocker and a failed deployment gate; the
+successful artifact Release is not presented as production evidence.
 
 ## Remaining Production Gates
 
-1. Provision the production host with Terraform and point an owned DNS name at
-   it.
-2. Protect the GitHub `production` Environment and configure the required host,
-   SSH and application secrets plus `PRODUCTION_URL`.
-3. Rerun release for the immutable SHA and pass deployment migration, internal
-   health, public API, salary-model availability and browser smoke tests.
-4. Record the production URL and successful release run, then confirm a clean
+1. Provide a Hetzner API token and an owned production domain/subdomain, then
+   provision the host with the validated Terraform module and update DNS.
+2. Configure the resulting `PRODUCTION_HOST`, pinned
+   `PRODUCTION_KNOWN_HOSTS`, `DOMAIN`, `PRODUCTION_URL` and monitored scraper
+   contact address in the protected Environment.
+3. Rerun Deploy for the immutable SHA and pass migration, internal health,
+   public API, salary-model availability and browser smoke tests.
+4. Record the production URL and successful Deploy run, then confirm a clean
    worktree with local `main` equal to `origin/main`.
 
 Until those gates have direct evidence, JobRadar remains locally validated but

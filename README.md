@@ -43,9 +43,9 @@ Current acceptance results are recorded in
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
 | Salary publication | Pass locally: 11.66% MAPE vs. 15% maximum; readiness pass |
-| GitHub CI | [Run 29678361931](https://github.com/auster-vn/JobRadar/actions/runs/29678361931) passed every job |
-| Release model and images | Passed in [run 29678660335](https://github.com/auster-vn/JobRadar/actions/runs/29678660335) |
-| Live production deployment | Blocked before SSH: production host, DNS and secrets are not configured |
+| GitHub CI | [Run 29679893232](https://github.com/auster-vn/JobRadar/actions/runs/29679893232) passed every job |
+| Release model and images | [Run 29680158274](https://github.com/auster-vn/JobRadar/actions/runs/29680158274) passed |
+| Live production deployment | [Deploy 29680312938](https://github.com/auster-vn/JobRadar/actions/runs/29680312938) blocked before SSH: no production host or DNS |
 
 ## Architecture
 
@@ -341,7 +341,7 @@ account; Caddy terminates TLS; GitHub Actions builds commit-addressed GHCR image
 and deploys immutable release directories with smoke testing and rollback.
 
 The release pipeline has retrained the revision-bound model and published all
-three images for commit `b124dbecbced92544f820bd88a9454fe8b8b6b93`. No live
+three images for commit `5b436b8858ad18151fd94dae991c74e06e7ac7ee`. No live
 deployment is claimed: provisioning still requires an owner-approved Terraform
 apply, DNS, GitHub Environment secrets, and a verified public smoke test. Follow
 [`docs/operations.md`](docs/operations.md) for the complete deployment, backup,
