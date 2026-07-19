@@ -54,23 +54,60 @@ class SalaryFeatureEncoder:
         )
         return csr_matrix(values)
 
+    @staticmethod
+    def _stable_limited_vocabulary(
+        documents: list[str],
+        feature_limit: int,
+        **vectorizer_options: Any,
+    ) -> dict[str, int]:
+        """Select frequent terms with a stable lexical tie-break."""
+        import numpy as np
+        from sklearn.feature_extraction.text import CountVectorizer
+
+        if feature_limit < 1:
+            raise ValueError("feature_limit must be positive")
+        selector = CountVectorizer(min_df=2, **vectorizer_options)
+        counts = selector.fit_transform(documents)
+        terms = selector.get_feature_names_out()
+        frequencies = np.asarray(counts.sum(axis=0)).ravel()
+        ranked = sorted(
+            zip(terms.tolist(), frequencies.tolist(), strict=True),
+            key=lambda item: (-float(item[1]), str(item[0])),
+        )
+        selected = sorted(str(term) for term, _ in ranked[:feature_limit])
+        return {term: index for index, term in enumerate(selected)}
+
     def fit(self, rows: list[dict[str, Any]]) -> "SalaryFeatureEncoder":
         from sklearn.feature_extraction.text import TfidfVectorizer
         from sklearn.preprocessing import OneHotEncoder
 
+        titles = self._titles(rows)
+        skills = self._skill_documents(rows)
+        title_options: dict[str, Any] = {
+            "analyzer": "char_wb",
+            "ngram_range": (2, 5),
+        }
+        skill_options: dict[str, Any] = {
+            "token_pattern": r"(?u)[^|]+",  # noqa: S106 - scikit tokenization expression.
+            "lowercase": True,
+        }
         self.title_vectorizer = TfidfVectorizer(
-            analyzer="char_wb",
-            ngram_range=(2, 5),
-            min_df=2,
-            max_features=self.title_feature_limit,
+            **title_options,
+            vocabulary=self._stable_limited_vocabulary(
+                titles,
+                self.title_feature_limit,
+                **title_options,
+            ),
             sublinear_tf=True,
-        ).fit(self._titles(rows))
+        ).fit(titles)
         self.skill_vectorizer = TfidfVectorizer(
-            token_pattern=r"(?u)[^|]+",  # noqa: S106 - scikit tokenization expression.
-            lowercase=True,
-            min_df=2,
-            max_features=self.skill_feature_limit,
-        ).fit(self._skill_documents(rows))
+            **skill_options,
+            vocabulary=self._stable_limited_vocabulary(
+                skills,
+                self.skill_feature_limit,
+                **skill_options,
+            ),
+        ).fit(skills)
         self.category_encoder = OneHotEncoder(handle_unknown="ignore").fit(self._categories(rows))
         return self
 

@@ -53,6 +53,16 @@ def test_salary_categories_include_structured_canonical_role() -> None:
     ]
 
 
+def test_salary_feature_limit_uses_stable_lexical_tie_break() -> None:
+    vocabulary = SalaryFeatureEncoder._stable_limited_vocabulary(
+        ["zeta alpha", "zeta alpha", "beta gamma", "beta gamma"],
+        2,
+        token_pattern=r"(?u)\b\w+\b",  # noqa: S106 - scikit tokenization expression.
+    )
+
+    assert vocabulary == {"alpha": 0, "beta": 1}
+
+
 def test_salary_artifacts_round_trip_without_test_vocabulary_leakage(tmp_path: Any) -> None:
     rows = _training_rows()
     unseen = [

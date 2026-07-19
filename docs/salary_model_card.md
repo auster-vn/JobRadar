@@ -82,7 +82,9 @@ because none of its IDs existed in the fitting pool at the cutoff.
 3. Within each partition separately, retain role/level/location segments with
    at least three records and replace noisy listing-level labels with that
    partition's median salary. Holdout labels never define training targets.
-4. Fit a TF-IDF and categorical feature encoder on training rows only.
+4. Fit a TF-IDF and categorical feature encoder on training rows only. TF-IDF
+   limits use term frequency with a lexical tie-break so clean-room releases
+   select the same vocabulary across runners.
 5. Fit XGBoost mean, Q25 and Q75 regressors on log salary.
 6. Calibrate quantile offsets with train-only out-of-fold residuals.
 7. Calibrate an interval radius on a later train-only temporal partition, then
