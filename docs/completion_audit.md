@@ -35,9 +35,9 @@ successful deployment is claimed here.
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
 | Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass; the live firewall API authorize/revoke contract was exercised without leaking a resource |
 | Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29681740068](https://github.com/auster-vn/JobRadar/actions/runs/29681740068) completed every job successfully |
-| Release workflow | Pass | [Run 29681998252](https://github.com/auster-vn/JobRadar/actions/runs/29681998252) published the model and all three images successfully |
-| Live production | Blocked | [Deploy 29682160527](https://github.com/auster-vn/JobRadar/actions/runs/29682160527) failed before SSH because no host or DNS exists for smoke tests |
+| GitHub CI | Pass | [Run 29684894347](https://github.com/auster-vn/JobRadar/actions/runs/29684894347) completed every job successfully |
+| Release workflow | Pass | [Run 29685151332](https://github.com/auster-vn/JobRadar/actions/runs/29685151332) published the model and all three images successfully |
+| Live production | Blocked | [Deploy 29685351595](https://github.com/auster-vn/JobRadar/actions/runs/29685351595) failed before SSH because no host or DNS exists for smoke tests |
 
 ## Collection Evidence
 
@@ -148,18 +148,18 @@ The following checks were completed on 2026-07-19:
 ## Remote Delivery Evidence
 
 GitHub CI run
-[`29681740068`](https://github.com/auster-vn/JobRadar/actions/runs/29681740068)
+[`29684894347`](https://github.com/auster-vn/JobRadar/actions/runs/29684894347)
 passed backend, frontend, browser E2E, infrastructure, ML contract, ML
 publication and all three container builds at
-`926932d86d84c59d0a40557937b2a7f0107cf7f6`.
+`394327ebefe6af478a8c11df0a777479932d476f`.
 
 Dependent Release run
-[`29681998252`](https://github.com/auster-vn/JobRadar/actions/runs/29681998252)
+[`29685151332`](https://github.com/auster-vn/JobRadar/actions/runs/29685151332)
 reconstructed 3,208 rows, published MLflow run
-`0b9d1cf792e14db48d471b42a86b8714` at the same source revision with 11.8803049%
+`b1381fab5daf4668a25fc9d98a4af92b` at the same source revision with 11.8803047%
 MAPE, and built/pushed backend, web and seeded ML images. Release completed
 successfully. It triggered independent Deploy run
-[`29682160527`](https://github.com/auster-vn/JobRadar/actions/runs/29682160527),
+[`29685351595`](https://github.com/auster-vn/JobRadar/actions/runs/29685351595),
 which correctly failed before SSH with `PRODUCTION_HOST is required`.
 
 - the GitHub `production` Environment permits deployment only from `main`;
