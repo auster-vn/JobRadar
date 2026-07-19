@@ -15,10 +15,10 @@ Next.js dashboard.
 > **Project status:** the measured MVP runs locally and the salary-model
 > publication gate now passes on a clean database: 11.88% MAPE against a fixed
 > 15% maximum with `data_readiness=true`. GitHub CI passes, and release retraining
-> plus all three GHCR image builds pass. The Hetzner API credential is configured,
-> but live deployment still requires encrypted remote Terraform state, an owned
-> domain, the production host, and host-derived secrets. No live deployment is
-> claimed until the public smoke test passes. See the
+> plus all three GHCR image builds pass. Production is being moved to a private
+> self-hosted target exposed only through Tailscale Serve; host services, the
+> repository runner, and the private smoke test still have to pass. No live
+> deployment is claimed until that evidence exists. See the
 > [completion audit](docs/completion_audit.md) for current evidence.
 
 ## Capabilities
@@ -42,15 +42,15 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 257 passed |
+| Backend unit and integration tests | 261 passed |
 | Combined API, NLP, scraper, and ML coverage | 80.72% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
 | Salary publication | Pass locally: 11.88% MAPE vs. 15% maximum; readiness pass |
-| GitHub CI | [Run 29684894347](https://github.com/auster-vn/JobRadar/actions/runs/29684894347) passed every job |
-| Release model and images | [Run 29685151332](https://github.com/auster-vn/JobRadar/actions/runs/29685151332) passed |
-| Live production deployment | [Deploy 29685351595](https://github.com/auster-vn/JobRadar/actions/runs/29685351595) blocked before SSH: no production host or DNS |
+| GitHub CI | [Run 29686395582](https://github.com/auster-vn/JobRadar/actions/runs/29686395582) passed every job |
+| Release model and images | [Run 29686499805](https://github.com/auster-vn/JobRadar/actions/runs/29686499805) passed |
+| Live production deployment | [Deploy 29686670649](https://github.com/auster-vn/JobRadar/actions/runs/29686670649) blocked at the retired SSH-target preflight; private self-host setup is in progress |
 
 ## Architecture
 
@@ -93,7 +93,7 @@ documented in [`docs/architecture.md`](docs/architecture.md).
 | Data and orchestration | Celery, dbt-postgres, Prefect-compatible flows, allowlisted Playwright rendering |
 | NLP and ML | deterministic parsers, Sentence Transformers, XGBoost quantile regression, MLflow |
 | Observability | Prometheus, Grafana, structured logs, health/readiness probes |
-| Delivery | Docker Compose, GitHub Actions, GHCR, Terraform, Hetzner Cloud, Caddy |
+| Delivery | Docker Compose, GitHub Actions, GHCR, a repository-scoped self-hosted runner, and private Tailscale Serve ingress |
 
 ## Quick Start
 
@@ -340,16 +340,20 @@ workers/      Celery schedules and background tasks
 
 ## Deployment
 
-Production delivery is prepared for a Hetzner CX33 host. Terraform creates
-the protected host and firewall; cloud-init configures a non-root deployment
-account; Caddy terminates TLS; GitHub Actions builds commit-addressed GHCR images
-and deploys immutable release directories with smoke testing and rollback.
+The primary production target is a single trusted workstation running Docker
+and a repository-scoped GitHub Actions runner. Tailscale Serve terminates HTTPS
+and proxies the dashboard from `127.0.0.1:3000`; the service is available only
+to authenticated devices in the same tailnet, and no database, monitoring, or
+application port is exposed to the LAN or public Internet. GitHub Actions builds
+commit-addressed GHCR images and deploys immutable release directories with
+health checks, private HTTPS smoke testing, and rollback.
 
 The release pipeline has retrained the revision-bound model and published all
-three images for commit `394327ebefe6af478a8c11df0a777479932d476f`. No live
-deployment is claimed: provisioning still requires encrypted remote state, an
-owner-approved Terraform apply, DNS, host-derived GitHub Environment secrets,
-and a verified public smoke test. Follow
+three images for commit `c0e859e797752cfc0959f32f5ea888e060cda0f5`. Live
+production is not yet claimed because the local Docker/Tailscale services and
+self-hosted runner have not completed a Deploy run. The Terraform module and
+manual `Deploy Hetzner` workflow remain an optional paid public-host fallback.
+Follow
 [`docs/operations.md`](docs/operations.md) for the complete deployment, backup,
 restore, rotation, and rollback runbook.
 

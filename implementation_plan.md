@@ -1608,9 +1608,10 @@ volumes: [pgdata, mlruns, grafana_data]
 | Tier | Stack | Cost/month | Notes |
 |------|-------|-----------|-------|
 | **Local Dev** | Docker Compose | $0 | Full stack on laptop |
+| **Personal Production** | Existing workstation + Tailscale Serve | $0 incremental | Private tailnet access for one operator |
 | **Staging** | Railway Hobby | ~$5 | API + Worker only |
 | **Prod (Small)** | Railway Pro + Railway PG | ~$25-40 | Up to 10k users, 100k jobs |
-| **Prod (Scale)** | Hetzner CX33 | Verify current regional price | Self-hosted, ~1M jobs |
+| **Prod (Scale)** | Hetzner CX33 | Verify current regional price | Optional public cloud host, ~1M jobs |
 | **Prod (HA)** | 2× Hetzner CX33 + Cloudflare | Verify current regional price | High availability |
 
 ### 16.3 `.env.example`
@@ -1734,7 +1735,7 @@ MVP is **done** when ALL of the following pass:
 ### Phase 3 — ML Pipeline (Tuần 6-8)
 - [x] Feature engineering: encode level, location, skills
 - [x] XGBoost × 3 (mean + Q25 + Q75): train + MLflow log
-- [x] ML evaluation CI gate (MAPE < 15%; current clean-room result 11.66%)
+- [x] ML evaluation CI gate (MAPE < 15%; current clean-room result 11.88%)
 - [x] pgvector: embed all jobs with all-MiniLM-L6-v2
 - [x] Job matching API: `/api/profile/matching-jobs`
 - [x] Skill gap analyzer
@@ -1754,8 +1755,8 @@ MVP is **done** when ALL of the following pass:
 - [x] Rate limiting: auth-aware (anon vs authenticated)
 - [x] Load test with k6 (target: 100 RPS, p95 < 500ms)
 - [x] Full documentation (README + API docs + data dictionary)
-- [ ] Deploy: apply validated Terraform and release Docker Compose on Hetzner CX33
+- [ ] Deploy: release immutable Compose stack on the private self-hosted runner, expose only through Tailscale Serve, and pass production smoke/E2E
 
 ---
 
-*Version 1.6 - ML PUBLICATION READY | 2026-07-19 | Acceptance evidence in `docs/completion_audit.md`*
+*Version 1.7 - PRIVATE PRODUCTION DEPLOYMENT IN PROGRESS | 2026-07-19 | Acceptance evidence in `docs/completion_audit.md`*

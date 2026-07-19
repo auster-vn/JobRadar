@@ -1,0 +1,59 @@
+x-selfhost-logging: &selfhost-logging
+  driver: local
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    logging: *selfhost-logging
+
+  redis:
+    logging: *selfhost-logging
+
+  migrate:
+    logging: *selfhost-logging
+
+  salary-data:
+    logging: *selfhost-logging
+
+  api:
+    logging: *selfhost-logging
+
+  worker:
+    command: celery -A workers.celery_app worker -Q alerts,scraping --concurrency=2 --loglevel=info
+    logging: *selfhost-logging
+
+  ml-worker:
+    logging: *selfhost-logging
+
+  salary-model:
+    logging: *selfhost-logging
+
+  ml-api:
+    logging: *selfhost-logging
+
+  mlflow:
+    logging: *selfhost-logging
+
+  beat:
+    logging: *selfhost-logging
+
+  web:
+    ports:
+      - "127.0.0.1:3000:3000"
+    logging: *selfhost-logging
+
+  backup:
+    logging: *selfhost-logging
+
+  caddy:
+    profiles: [public-ingress]
+    ports: !reset []
+    logging: *selfhost-logging
+
+  prometheus:
+    logging: *selfhost-logging
+
+  grafana:
+    logging: *selfhost-logging

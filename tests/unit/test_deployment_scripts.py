@@ -16,6 +16,7 @@ def _release(root: Path, release_id: str) -> Path:
     for name in (
         "compose.yaml",
         "compose.production.yaml",
+        "compose.selfhost.yaml",
         "compose.monitoring.yaml",
         "compose.monitoring.production.yaml",
         ".env",
@@ -29,7 +30,9 @@ def test_deploy_script_activates_and_rolls_back_releases(tmp_path: Path) -> None
     fake_bin.mkdir()
     fake_docker = fake_bin / "docker"
     fake_docker.write_text(
-        '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
         encoding="utf-8",
     )
     fake_docker.chmod(0o755)
@@ -41,6 +44,7 @@ def test_deploy_script_activates_and_rolls_back_releases(tmp_path: Path) -> None
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
         "MIN_FREE_DISK_MB": "1",
     }
     script = PROJECT_ROOT / "scripts" / "deploy_production.sh"
@@ -76,7 +80,9 @@ def test_deploy_script_rejects_release_when_disk_preflight_fails(tmp_path: Path)
     fake_bin.mkdir()
     fake_docker = fake_bin / "docker"
     fake_docker.write_text(
-        '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
         encoding="utf-8",
     )
     fake_docker.chmod(0o755)
@@ -87,6 +93,7 @@ def test_deploy_script_rejects_release_when_disk_preflight_fails(tmp_path: Path)
         **os.environ,
         "PATH": f"{fake_bin}:{os.environ['PATH']}",
         "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
         "MIN_FREE_DISK_MB": "999999999",
     }
 
@@ -108,6 +115,133 @@ def test_deploy_script_rejects_release_when_disk_preflight_fails(tmp_path: Path)
     assert "image prune -f" in docker_log.read_text(encoding="utf-8")
     assert "compose.monitoring.production.yaml pull" not in docker_log.read_text(encoding="utf-8")
     assert not (deploy_root / "current").exists()
+
+
+def test_deploy_script_uses_self_hosted_overlay_and_checks_docker_disk(
+    tmp_path: Path,
+) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    release = _release(deploy_root, "release-1")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
+        "MIN_FREE_DISK_MB": "1",
+        "MIN_DOCKER_FREE_DISK_MB": "999999999",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "deploy",
+            str(deploy_root),
+            "release-1",
+            "self-hosted",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "Insufficient disk space" in result.stderr
+    assert (release / ".deployment-mode").read_text(encoding="utf-8").strip() == "self-hosted"
+    log = docker_log.read_text(encoding="utf-8")
+    assert "compose.selfhost.yaml config -q" in log
+    assert "compose.selfhost.yaml pull" not in log
+
+
+def test_failed_initial_deploy_stops_partial_stack(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n'
+        "if [[ $* == *'exec -T api'* ]]; then exit 1; fi\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    _release(deploy_root, "release-1")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
+        "MIN_FREE_DISK_MB": "1",
+        "HEALTHCHECK_ATTEMPTS": "1",
+        "HEALTHCHECK_INTERVAL_SECONDS": "0",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "deploy",
+            str(deploy_root),
+            "release-1",
+            "self-hosted",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "failed internal health checks" in result.stderr
+    assert "stopping the failed stack" in result.stderr
+    assert "compose.selfhost.yaml down --remove-orphans" in docker_log.read_text(encoding="utf-8")
+    assert not (deploy_root / "current").exists()
+
+
+def test_abort_stops_failed_initial_release(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        '#!/usr/bin/env bash\nset -euo pipefail\nprintf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n',
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    release = _release(deploy_root, "release-1")
+    (release / ".deployment-mode").write_text("self-hosted\n", encoding="utf-8")
+    (deploy_root / "current").symlink_to(release)
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+    }
+
+    subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "abort",
+            str(deploy_root),
+        ],
+        check=True,
+        env=env,
+    )
+
+    assert not (deploy_root / "current").exists()
+    assert "compose.selfhost.yaml down --remove-orphans" in docker_log.read_text(encoding="utf-8")
 
 
 def test_release_cleanup_preserves_rollback_and_scopes_image_pruning(
@@ -252,7 +386,7 @@ def test_deploy_workflow_propagates_every_scraper_flag() -> None:
 
     assert "scripts/prune_production_releases.sh" in workflow
     assert (
-        "bash '$DEPLOY_ROOT/current/scripts/prune_production_releases.sh' '$DEPLOY_ROOT' 5"
+        'bash "$DEPLOY_ROOT/current/scripts/prune_production_releases.sh" "$DEPLOY_ROOT" 5'
     ) in workflow
 
     ci_workflow = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
@@ -272,14 +406,16 @@ def test_release_and_deploy_are_separate_chained_gates() -> None:
     assert "workflows: [Release]" in deploy
     assert "github.event.workflow_run.conclusion == 'success'" in deploy
     assert "packages: read" in deploy
-    assert "Verify public production routes" in deploy
-    assert "Roll back failed release" in deploy
-    assert "if: failure() && (steps.deploy.outcome == 'failure'" in deploy
+    assert "Verify private HTTPS production routes" in deploy
+    assert "Roll back or stop failed release" in deploy
+    assert "if: failure() && steps.smoke.outcome == 'failure'" in deploy
+    assert 'deploy_production.sh" abort "$DEPLOY_ROOT"' in deploy
+    assert "steps.deploy.outcome == 'failure'" not in deploy
     assert "continue-on-error:" not in deploy
 
 
 def test_deploy_temporarily_authorizes_only_the_hosted_runner() -> None:
-    deploy = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+    deploy = (PROJECT_ROOT / ".github/workflows/deploy-hcloud.yml").read_text(encoding="utf-8")
 
     assert "HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}" in deploy
     assert "HCLOUD_FIREWALL_NAME: ${{ vars.HCLOUD_FIREWALL_NAME" in deploy
@@ -288,6 +424,29 @@ def test_deploy_temporarily_authorizes_only_the_hosted_runner() -> None:
     assert 'echo "cidr=$cidr" >> "$GITHUB_OUTPUT"' in deploy
     assert "if: always() && steps.release.outcome == 'success'" in deploy
     assert "manage_deploy_firewall.py revoke" in deploy
+    assert "workflow_dispatch:" in deploy
+    assert "workflow_run:" not in deploy
+
+
+def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
+    deploy = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+    ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    overlay = (PROJECT_ROOT / "compose.selfhost.yaml").read_text(encoding="utf-8")
+    actionlint = (PROJECT_ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")
+
+    assert "runs-on: [self-hosted, linux, x64, jobradar-production]" in deploy
+    assert "tailscale status --json" in deploy
+    assert "self-hosted" in deploy
+    assert "HCLOUD_TOKEN" not in deploy
+    assert "PRODUCTION_SSH_KEY" not in deploy
+    assert '"127.0.0.1:3000:3000"' in overlay
+    assert "profiles: [public-ingress]" in overlay
+    assert "driver: local" in overlay
+    assert 'max-size: "10m"' in overlay
+    assert "Validate private self-hosted ingress" in ci
+    assert '(.services | has("caddy") | not)' in ci
+    assert 'all(. == "local")' in ci
+    assert "jobradar-production" in actionlint
 
 
 def test_release_images_preserve_source_revision() -> None:

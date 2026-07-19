@@ -1,10 +1,6 @@
-name: Deploy
+name: Deploy Hetzner
 
 on:
-  workflow_run:
-    workflows: [Release]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -16,9 +12,7 @@ env:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: [self-hosted, linux, x64, jobradar-production]
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
     concurrency:
       group: production
       cancel-in-progress: false
@@ -26,7 +20,13 @@ jobs:
       name: production
       url: ${{ vars.PRODUCTION_URL }}
     env:
-      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/cp/.local/share/jobradarvn' }}
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/opt/jobradarvn' }}
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+      PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      HCLOUD_FIREWALL_NAME: ${{ vars.HCLOUD_FIREWALL_NAME || 'jobradarvn-production-firewall' }}
       DOMAIN: ${{ secrets.DOMAIN }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
@@ -50,10 +50,15 @@ jobs:
           ref: ${{ env.RELEASE_SHA }}
 
       - id: release
-        name: Validate deployment inputs and host
+        name: Validate deployment inputs
         shell: bash
         run: |
           set -euo pipefail
+          : "${PRODUCTION_HOST:?PRODUCTION_HOST is required}"
+          : "${PRODUCTION_USER:?PRODUCTION_USER is required}"
+          : "${PRODUCTION_SSH_KEY:?PRODUCTION_SSH_KEY is required}"
+          : "${PRODUCTION_KNOWN_HOSTS:?PRODUCTION_KNOWN_HOSTS is required}"
+          : "${HCLOUD_TOKEN:?HCLOUD_TOKEN is required}"
           : "${DOMAIN:?DOMAIN is required}"
           : "${DB_PASSWORD:?DB_PASSWORD is required}"
           : "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
@@ -61,9 +66,9 @@ jobs:
           : "${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}"
           : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
           (( ${#CV_ENCRYPTION_KEY} >= 32 ))
-          [[ "$DEPLOY_ROOT" == "$HOME/"* ]]
           [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]
-          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+\.ts\.net$ ]]
+          [[ "$HCLOUD_FIREWALL_NAME" =~ ^[A-Za-z0-9._-]+$ ]]
+          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]
           [[ "$ENABLE_ITVIEC_SCRAPER" =~ ^(true|false)$ ]]
           [[ "$ENABLE_TOPCV_SCRAPER" =~ ^(true|false)$ ]]
           [[ "$ENABLE_VIETNAMWORKS_SCRAPER" =~ ^(true|false)$ ]]
@@ -78,28 +83,43 @@ jobs:
               exit 1
             }
           done
-          command -v docker tailscale jq >/dev/null
-          docker info >/dev/null
-          tailscale status --json | jq -e --arg dns "$DOMAIN." \
-            '.BackendState == "Running" and .Self.Online and .Self.DNSName == $dns' \
-            >/dev/null
-          echo "DOCKER_CONFIG=$RUNNER_TEMP/jobradar-docker-config" >> "$GITHUB_ENV"
           owner=${GITHUB_REPOSITORY_OWNER,,}
           echo "image_prefix=ghcr.io/$owner/jobradarvn" >> "$GITHUB_OUTPUT"
+          echo "target=$PRODUCTION_USER@$PRODUCTION_HOST" >> "$GITHUB_OUTPUT"
 
-      - name: Install immutable release configuration
+      - id: firewall
+        name: Temporarily authorize runner SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          cidr=$(python scripts/manage_deploy_firewall.py authorize \
+            --firewall-name "$HCLOUD_FIREWALL_NAME")
+          echo "cidr=$cidr" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PRODUCTION_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Upload immutable release configuration
         shell: bash
         run: |
           set -euo pipefail
           release_dir="$DEPLOY_ROOT/releases/$RELEASE_SHA"
-          install -d -m 700 "$release_dir"
-          tar -cf - \
-            compose.yaml compose.production.yaml compose.selfhost.yaml \
-            compose.monitoring.yaml compose.monitoring.production.yaml \
-            infra/caddy infra/prometheus infra/grafana \
+          tar -czf /tmp/jobradar-release.tgz \
+            compose.yaml compose.production.yaml compose.monitoring.yaml \
+            compose.monitoring.production.yaml infra/caddy infra/prometheus infra/grafana \
             scripts/deploy_production.sh scripts/prune_production_releases.sh \
-            scripts/production_smoke.sh scripts/backup_loop.sh \
-            | tar -xf - -C "$release_dir"
+            scripts/production_smoke.sh scripts/backup_loop.sh
+          # Paths expand on the runner after the validation step restricts their characters.
+          # shellcheck disable=SC2029
+          ssh "${{ steps.release.outputs.target }}" \
+            "mkdir -p '$release_dir' && tar -xzf - -C '$release_dir'" \
+            < /tmp/jobradar-release.tgz
+          # shellcheck disable=SC2029
           {
             printf 'BACKEND_IMAGE=%s-backend:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
             printf 'ML_IMAGE=%s-ml:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
@@ -121,39 +141,55 @@ jobs:
             printf 'ENABLE_ITVIEC_SCRAPER=%s\n' "$ENABLE_ITVIEC_SCRAPER"
             printf 'ENABLE_TOPCV_SCRAPER=%s\n' "$ENABLE_TOPCV_SCRAPER"
             printf 'ENABLE_VIETNAMWORKS_SCRAPER=%s\n' "$ENABLE_VIETNAMWORKS_SCRAPER"
-            printf 'BACKUP_DIR=%s/backups\n' "$DEPLOY_ROOT"
-          } > "$release_dir/.env"
-          chmod 600 "$release_dir/.env"
+          } | ssh "${{ steps.release.outputs.target }}" \
+            "umask 077; cat > '$release_dir/.env'"
 
       - id: registry
-        name: Authenticate host to GHCR
+        name: Authenticate target to GHCR
         shell: bash
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          install -d -m 700 "$DOCKER_CONFIG"
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          # The validated GitHub actor expands on the runner by design.
+          # shellcheck disable=SC2029
+          printf '%s' "$GHCR_TOKEN" | ssh "${{ steps.release.outputs.target }}" \
+            "docker login ghcr.io --username '$GITHUB_ACTOR' --password-stdin"
 
       - id: deploy
         name: Deploy release
-        shell: bash
-        run: >-
-          bash "$DEPLOY_ROOT/releases/$RELEASE_SHA/scripts/deploy_production.sh"
-          deploy "$DEPLOY_ROOT" "$RELEASE_SHA" self-hosted
+        run: |
+          # Validated release paths and SHA expand on the runner by design.
+          # shellcheck disable=SC2029
+          ssh "${{ steps.release.outputs.target }}" \
+            "bash '$DEPLOY_ROOT/releases/$RELEASE_SHA/scripts/deploy_production.sh' deploy '$DEPLOY_ROOT' '$RELEASE_SHA'"
 
       - id: smoke
-        name: Verify private HTTPS production routes
+        name: Verify public production routes
         if: steps.deploy.outcome == 'success'
         run: bash scripts/production_smoke.sh "https://$DOMAIN"
 
-      - name: Roll back or stop failed release
-        if: failure() && steps.smoke.outcome == 'failure'
-        run: bash "$DEPLOY_ROOT/current/scripts/deploy_production.sh" abort "$DEPLOY_ROOT"
+      - name: Roll back failed release
+        if: failure() && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: |
+          # The validated deployment root expands on the runner by design.
+          # shellcheck disable=SC2029
+          ssh "${{ steps.release.outputs.target }}" \
+            "bash '$DEPLOY_ROOT/current/scripts/deploy_production.sh' rollback '$DEPLOY_ROOT'"
 
       - name: Prune old releases
         if: success()
-        run: bash "$DEPLOY_ROOT/current/scripts/prune_production_releases.sh" "$DEPLOY_ROOT" 5
+        run: |
+          # The validated deployment root expands on the runner by design.
+          # shellcheck disable=SC2029
+          ssh "${{ steps.release.outputs.target }}" \
+            "bash '$DEPLOY_ROOT/current/scripts/prune_production_releases.sh' '$DEPLOY_ROOT' 5"
 
-      - name: Remove registry credentials from host
+      - name: Remove registry credentials from target
         if: always() && steps.registry.outcome == 'success'
-        run: docker logout ghcr.io
+        run: ssh "${{ steps.release.outputs.target }}" "docker logout ghcr.io"
+
+      - name: Revoke runner SSH authorization
+        if: always() && steps.release.outcome == 'success'
+        run: >-
+          python scripts/manage_deploy_firewall.py revoke
+          --firewall-name "$HCLOUD_FIREWALL_NAME"

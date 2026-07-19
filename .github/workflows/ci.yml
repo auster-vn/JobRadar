@@ -208,6 +208,36 @@ jobs:
       - run: terraform -chdir=infra/terraform validate
       - run: terraform -chdir=infra/terraform test
       - run: docker compose -f compose.yaml -f compose.collector.yaml config --quiet
+      - name: Validate private self-hosted ingress
+        env:
+          DB_PASSWORD: compose-test-password
+          JWT_SECRET_KEY: compose-test-jwt-secret
+          ADMIN_API_KEY: compose-test-admin-key
+          CV_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+          GRAFANA_ADMIN_PASSWORD: compose-test-grafana
+          DOMAIN: jobradar.test-tailnet.ts.net
+          BACKEND_IMAGE: ghcr.io/auster-vn/jobradarvn-backend:test
+          ML_IMAGE: ghcr.io/auster-vn/jobradarvn-ml:test
+          WEB_IMAGE: ghcr.io/auster-vn/jobradarvn-web:test
+        run: |
+          set -euo pipefail
+          config=$(mktemp)
+          docker compose \
+            -f compose.yaml \
+            -f compose.production.yaml \
+            -f compose.monitoring.yaml \
+            -f compose.monitoring.production.yaml \
+            -f compose.selfhost.yaml \
+            config --format json > "$config"
+          jq -e '
+            (.services | has("caddy") | not) and
+            ([.services | to_entries[] | select(.value.ports != null) | .key] == ["web"]) and
+            (.services.web.ports | length == 1) and
+            (.services.web.ports[0].host_ip == "127.0.0.1") and
+            (.services.web.ports[0].published == "3000") and
+            (.services.web.ports[0].target == 3000) and
+            ([.services[] | .logging.driver] | all(. == "local"))
+          ' "$config"
       - run: python scripts/validate_monitoring.py
       - name: Validate Prometheus configuration
         run: >-

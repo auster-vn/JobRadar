@@ -1,5 +1,10 @@
 # Production Infrastructure
 
+> This is an optional paid public-host fallback. The primary personal production
+> path uses the existing workstation, Tailscale Serve, and
+> `.github/workflows/deploy.yml`; it does not require Terraform. Do not apply this
+> module unless a public Hetzner target is deliberately approved.
+
 This module provisions one protected Hetzner Cloud application host, a deployment
 SSH key and an ingress firewall. It intentionally does not manage DNS because the
 authoritative DNS provider is deployment-specific.

@@ -242,106 +242,122 @@ setting behind a trusted reverse proxy that overwrites incoming forwarding heade
 
 ## Production deployment and backup
 
-Provision the host from `infra/terraform` before configuring CD. The module uses
-the current CX33 shared Intel plan, attaches the restrictive
-firewall before first boot, enables managed backups and protection, and prepares
-a non-root Docker deployment account through cloud-init. The committed HCP
-Terraform `cloud` block selects organization `auster-vn-jobradar`, workspace
-`jobradarvn-production`, and local execution. Run `terraform login
-app.terraform.io`, then `terraform init`; HCP stores encrypted, locked state
-while the local CLI uses the exported `HCLOUD_TOKEN`. Never commit
-credentials, tokens, state, plans or `terraform.tfvars`. After reviewing and
-applying a saved plan, create DNS A/AAAA records from the outputs and wait for
-`/var/lib/cloud/instance/boot-finished` on the host before enabling releases.
+### Primary target: private self-hosted workstation
 
-Set `DOMAIN`, `DB_PASSWORD`, a random `JWT_SECRET_KEY` of at least 32 characters,
-and a separate `ADMIN_API_KEY` of at least 24 characters. Use URL-safe random
-values without whitespace; the database password is interpolated into an asyncpg
-URL. A manual server-side deployment behind Caddy is:
+The primary target is one trusted Linux workstation. Docker runs the complete
+stack, a repository-scoped GitHub Actions runner performs deployment, and
+[Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve) terminates
+HTTPS for authenticated tailnet devices. This requires no public DNS record,
+inbound router rule, SSH daemon, or paid cloud host. Tailscale's Personal plan
+currently supports up to six users at no charge; verify the current limits in
+the [official plan documentation](https://tailscale.com/docs/reference/free-plans-discounts).
+
+The threat boundary is deliberate: `compose.selfhost.yaml` publishes only the
+Next.js service on `127.0.0.1:3000`. Caddy is disabled by default, while
+PostgreSQL, Redis, the API, MLflow, Prometheus and Grafana remain on the private
+Compose network. Tailscale Serve is the only ingress. The self-hosted runner is
+repo-scoped, the repository is private, and no pull-request job targets its
+`jobradar-production` label. Do not attach the runner to repositories that
+execute untrusted workflows.
+
+The host needs at least 8 GB RAM, Docker Compose v2, Tailscale, `jq`, and 10 GiB
+free on both the deployment and Docker-data filesystems. Enable persistent host
+services and authorize the current user to operate Tailscale:
 
 ```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.production.yaml \
-  -f compose.monitoring.yaml \
-  -f compose.monitoring.production.yaml \
-  up -d --build
+sudo systemctl enable --now docker tailscaled
+sudo tailscale up --hostname jobradar-production --operator "$USER"
+sudo loginctl enable-linger "$USER"
+tailscale status
 ```
 
-Caddy obtains and renews TLS certificates. Browser API calls remain same-origin
-and Next.js proxies them to the internal API service. PostgreSQL, Redis and
-MLflow are not published by the production override. The production `backup`
-service writes an atomic custom-format PostgreSQL dump every 24 hours to
-`BACKUP_DIR` (default `/srv/jobradar-backups`) and retains 14 days. Configure
-`BACKUP_INTERVAL_SECONDS` and `BACKUP_RETENTION_DAYS` when needed. Copy dumps to
-off-host storage; local retention is not disaster recovery. Restore into an
-empty database with `pg_restore --clean --if-exists --no-owner` after first
-validating the dump on a staging instance. `scripts/backup_postgres.sh` remains
-available for an immediate operator-triggered dump.
+The `tailscale up` command prints an authorization URL on first use. After the
+device is approved, record `.Self.DNSName` from `tailscale status --json`, remove
+its trailing dot, and configure the persistent HTTPS proxy:
+
+```bash
+tailscale serve --bg 3000
+tailscale serve status
+```
+
+Install the official GitHub Actions runner under an unprivileged directory,
+register it only to `auster-vn/JobRadar`, and add the custom label
+`jobradar-production`. Registration tokens are short lived; obtain one through
+the repository Settings page or GitHub API, pass it directly to `config.sh`, and
+unset it immediately. Run the agent as a persistent user service. Verify that
+GitHub reports the runner as both `online` and `idle` before triggering Deploy.
+
+Configure a protected GitHub Environment named `production` and restrict it to
+the `main` branch. Set these environment variables:
+
+- `DEPLOY_ROOT=/home/<deployment-user>/.local/share/jobradarvn`;
+- `PRODUCTION_URL=https://<device>.<tailnet>.ts.net`;
+- `SCRAPER_CONTACT_EMAIL` to a monitored mailbox; and
+- `ENABLE_ITVIEC_SCRAPER`, `ENABLE_TOPCV_SCRAPER`, and
+  `ENABLE_VIETNAMWORKS_SCRAPER` only after a current live source probe.
+
+Set `DOMAIN` to the exact Tailscale DNS name without `https://` or a trailing
+dot. Store it with `DB_PASSWORD`, `JWT_SECRET_KEY`, `ADMIN_API_KEY`,
+`CV_ENCRYPTION_KEY`, and `GRAFANA_ADMIN_PASSWORD` as Environment secrets;
+`GRAFANA_ADMIN_USER` defaults to `admin`. Generate independent URL-safe values
+without whitespace. The CV key must contain at least 32 characters and must be
+retained outside the host because database backups cannot recover a lost key.
+Optional secrets are `LINKEDIN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `SMTP_HOST`,
+`SMTP_PORT`, `SMTP_USER`, and `SMTP_PASSWORD`.
 
 ### GitHub Actions release and deployment
 
-`.github/workflows/release.yml` runs after a successful `CI` workflow on `main`
-or through `workflow_dispatch`. It reconstructs and validates the salary model,
-then builds backend, ML and web images and pushes immutable commit-SHA tags to
-GHCR. A successful Release run triggers `.github/workflows/deploy.yml`; a failed
-model or image gate cannot start deployment. Deploy may also be rerun explicitly
-through `workflow_dispatch` without rebuilding an already published release.
+`.github/workflows/release.yml` runs only after successful CI on `main` or by
+manual dispatch. It reconstructs and validates the salary model, then publishes
+backend, ML, and web images using immutable commit-SHA tags. A successful Release
+triggers `.github/workflows/deploy.yml` on the self-hosted runner. A failed model
+or image gate cannot start deployment.
 
-Deploy uploads only runtime configuration and starts the target with
-`--no-build`. The target stores immutable releases under
-`/opt/jobradarvn/releases/<commit>` by default. Internal health checks activate
-the new `current` symlink; public TLS smoke checks cover readiness, dashboard,
-jobs and salary routes. A failed deployment or smoke test restores the previous
-release and leaves the Deploy workflow failed. Release success is artifact
-evidence only and is never treated as production-deployment evidence.
+Deploy validates Docker, Tailscale connectivity, the exact `.ts.net` hostname,
+all secrets, and the home-scoped deployment root. It installs only release
+configuration under `releases/<commit>`, authenticates to GHCR with the
+workflow's short-lived token, and starts prebuilt images with `--no-build`.
+Internal migration, API, and model health checks activate the `current` symlink;
+private HTTPS smoke checks cover readiness, the dashboard, jobs, and salary
+routes. Failure restores the previous release and leaves the workflow failed.
+Release success alone is never production evidence.
 
-Cloud-init configures Docker's `local` log driver with three 10 MB files per
-container. Before pulling a release, the deployment script removes dangling
-images and requires at least 10 GiB free under the deployment filesystem;
-`MIN_FREE_DISK_MB` may raise or lower that threshold for a deliberately sized
-host. After a successful public smoke test, cleanup retains the five newest
-release directories plus the active and recorded rollback releases. It validates
-their immutable GHCR references, removes only unreferenced JobRadar backend, ML
-and web images from the same repositories, skips images used by containers and
-never prunes volumes. Run the same bounded cleanup manually with:
+Before pulling, deployment removes dangling images and requires at least 10 GiB
+free under both the deployment root and Docker data root. `MIN_FREE_DISK_MB` and
+`MIN_DOCKER_FREE_DISK_MB` may adjust those thresholds only for a deliberately
+sized host. Every self-hosted container uses Docker's `local` log driver with
+three 10 MB files, preventing unbounded JSON logs from consuming the root
+filesystem. Successful cleanup retains the five newest release directories plus
+the active and rollback releases. It removes only unreferenced JobRadar image
+tags, skips images used by containers, and never prunes volumes. Run the bounded
+cleanup manually with:
 
 ```bash
-bash /opt/jobradarvn/current/scripts/prune_production_releases.sh \
-  /opt/jobradarvn 5
+root="$HOME/.local/share/jobradarvn"
+bash "$root/current/scripts/prune_production_releases.sh" "$root" 5
 ```
 
-Configure a protected GitHub Environment named `production` and restrict it to
-the `main` branch. Repositories with multiple production operators should also
-require reviewers; a solo deployment may omit that manual approval gate. Set
-`PRODUCTION_URL`, `HCLOUD_FIREWALL_NAME` and optional `DEPLOY_ROOT` environment
-variables, plus these environment secrets:
+The `backup` service writes an atomic PostgreSQL custom-format dump every 24
+hours to `$DEPLOY_ROOT/backups` and retains 14 days. Configure
+`BACKUP_INTERVAL_SECONDS` and `BACKUP_RETENTION_DAYS` when needed. Copy dumps to
+off-host encrypted storage; local retention is not disaster recovery. Restore
+into a disposable instance first with `pg_restore --clean --if-exists
+--no-owner`. `scripts/backup_postgres.sh` remains available for an immediate
+operator-triggered dump.
 
-- `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_KEY` and a pinned
-  `PRODUCTION_KNOWN_HOSTS` entry;
-- `HCLOUD_TOKEN`, used only to add the current GitHub-hosted runner's exact SSH
-  CIDR to the Terraform `firewall_name` output and revoke it in an `always()`
-  cleanup. A revoke failure fails the deployment;
-- `DOMAIN`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ADMIN_API_KEY`,
-  `CV_ENCRYPTION_KEY` and `GRAFANA_ADMIN_PASSWORD`; `GRAFANA_ADMIN_USER`
-  defaults to `admin`. Generate the CV key independently with at least 32
-  random URL-safe characters and retain it in the secret manager: database
-  backups contain ciphertext and cannot recover a lost key.
-- Optional provider credentials: `LINKEDIN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`,
-  `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER` and `SMTP_PASSWORD`.
+Prometheus and Grafana run only on the private Compose network. Inspect them
+through `docker compose exec`, or add a separate authenticated Tailscale Serve
+route after an explicit review. Monitoring does not depend on a host-published
+API port.
 
-Set `ENABLE_ITVIEC_SCRAPER`, `ENABLE_TOPCV_SCRAPER` and
-`ENABLE_VIETNAMWORKS_SCRAPER` as environment variables only after reviewing
-current source policy and completing a live probe. Set
-`SCRAPER_CONTACT_EMAIL` as a repository variable pointing to a monitored
-mailbox. The target needs Docker with
-Compose and permission for the deployment user to run Docker. GHCR access uses
-the workflow's short-lived token and is removed after deployment.
+### Optional public Hetzner target
 
-The release includes Prometheus and Grafana on the private Compose network.
-Neither monitoring port is published in production; use an SSH tunnel for
-administrative access. Prometheus scrapes `api:8000` directly, so monitoring does
-not depend on a host-published API port.
+`infra/terraform` and `.github/workflows/deploy-hcloud.yml` are retained as an
+optional paid public-host path. The workflow is manual only and is not part of
+the primary release chain. It requires an owner-reviewed Terraform apply, public
+DNS, Caddy, pinned SSH host keys, and the Hetzner-specific GitHub Environment
+secrets documented in [`infra/terraform/README.md`](../infra/terraform/README.md).
+Never apply the saved plan merely to make a deployment gate pass.
 
 To rotate CV encryption without exposing keys in shell arguments, first take a
 verified database backup. Run the transactional rotation against the active
@@ -362,9 +378,10 @@ The command decrypts and re-encrypts every populated CV in one transaction. An
 incorrect old key aborts and rolls back the complete update. Restart API and ML
 workers with the new `CV_ENCRYPTION_KEY` immediately after it succeeds.
 
-To verify or roll back manually on the target:
+To verify or roll back the self-hosted target manually:
 
 ```bash
-bash /opt/jobradarvn/current/scripts/production_smoke.sh https://example.com
-bash /opt/jobradarvn/current/scripts/deploy_production.sh rollback /opt/jobradarvn
+root="$HOME/.local/share/jobradarvn"
+bash "$root/current/scripts/production_smoke.sh" "https://<device>.<tailnet>.ts.net"
+bash "$root/current/scripts/deploy_production.sh" rollback "$root"
 ```
