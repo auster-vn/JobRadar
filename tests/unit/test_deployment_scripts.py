@@ -72,6 +72,7 @@ def test_deploy_script_activates_and_rolls_back_releases(tmp_path: Path) -> None
     assert "compose -f compose.yaml -f compose.production.yaml" in log
     assert "compose.monitoring.production.yaml pull" in log
     assert "compose.monitoring.production.yaml up -d --no-build" in log
+    assert log.count("exec -T grafana sh -ceu") == 3
     assert log.index("image prune -f") < log.index("compose.monitoring.production.yaml pull")
 
 
@@ -208,6 +209,100 @@ def test_failed_initial_deploy_stops_partial_stack(tmp_path: Path) -> None:
     assert "stopping the failed stack" in result.stderr
     assert "compose.selfhost.yaml down --remove-orphans" in docker_log.read_text(encoding="utf-8")
     assert not (deploy_root / "current").exists()
+
+
+def test_failed_grafana_credential_sync_stops_initial_stack(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n'
+        "if [[ $* == *'exec -T grafana'* ]]; then exit 1; fi\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    _release(deploy_root, "release-1")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
+        "MIN_FREE_DISK_MB": "1",
+        "GRAFANA_CREDENTIAL_ATTEMPTS": "1",
+        "GRAFANA_CREDENTIAL_INTERVAL_SECONDS": "0",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "deploy",
+            str(deploy_root),
+            "release-1",
+            "self-hosted",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "failed to synchronize Grafana credentials" in result.stderr
+    assert "stopping the failed stack" in result.stderr
+    assert "compose.selfhost.yaml down --remove-orphans" in docker_log.read_text(encoding="utf-8")
+    assert not (deploy_root / "current").exists()
+
+
+def test_failed_rollback_restores_the_active_release(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'printf \'%s %s\\n\' "$PWD" "$*" >> "$DOCKER_LOG"\n'
+        "if [[ $PWD == */release-1 && $* == *'exec -T api'* ]]; then exit 1; fi\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    previous = _release(deploy_root, "release-1")
+    current = _release(deploy_root, "release-2")
+    (previous / ".deployment-mode").write_text("self-hosted\n", encoding="utf-8")
+    (current / ".deployment-mode").write_text("self-hosted\n", encoding="utf-8")
+    (deploy_root / "current").symlink_to(current)
+    (deploy_root / ".previous-release").write_text(str(previous), encoding="utf-8")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "HEALTHCHECK_ATTEMPTS": "1",
+        "HEALTHCHECK_INTERVAL_SECONDS": "0",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "rollback",
+            str(deploy_root),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "Rollback target failed internal health checks" in result.stderr
+    assert (deploy_root / "current").resolve() == current
+    log = docker_log.read_text(encoding="utf-8")
+    assert f"{previous} compose" in log
+    assert f"{current} compose" in log
+    assert (deploy_root / ".previous-release").exists()
 
 
 def test_abort_stops_failed_initial_release(tmp_path: Path) -> None:
@@ -447,6 +542,22 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     assert '(.services | has("caddy") | not)' in ci
     assert 'all(. == "local")' in ci
     assert "jobradar-production" in actionlint
+
+
+def test_deploy_keeps_runtime_config_readable_with_a_restrictive_runner_umask() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+
+    assert 'find "$release_dir/infra" -type d -exec chmod 755 {} +' in workflow
+    assert 'find "$release_dir/infra" -type f -exec chmod 644 {} +' in workflow
+    assert 'chmod 600 "$release_dir/.env"' in workflow
+
+
+def test_deploy_synchronizes_and_verifies_grafana_admin_credentials() -> None:
+    script = (PROJECT_ROOT / "scripts/deploy_production.sh").read_text(encoding="utf-8")
+
+    assert "grafana cli admin reset-admin-password --password-from-stdin" in script
+    assert "http://127.0.0.1:3000/api/user" in script
+    assert script.count("sync_grafana_admin_credentials") == 4
 
 
 def test_release_images_preserve_source_revision() -> None:

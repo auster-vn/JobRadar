@@ -94,6 +94,37 @@ wait_for_internal_health() {
   return 1
 }
 
+sync_grafana_admin_credentials() {
+  local attempts=${GRAFANA_CREDENTIAL_ATTEMPTS:-30}
+  local interval=${GRAFANA_CREDENTIAL_INTERVAL_SECONDS:-2}
+  [[ "$attempts" =~ ^[1-9][0-9]*$ ]] || {
+    echo "GRAFANA_CREDENTIAL_ATTEMPTS must be a positive integer" >&2
+    return 1
+  }
+  [[ "$interval" =~ ^[0-9]+$ ]] || {
+    echo "GRAFANA_CREDENTIAL_INTERVAL_SECONDS must be a non-negative integer" >&2
+    return 1
+  }
+
+  local attempt
+  for attempt in $(seq 1 "$attempts"); do
+    if compose exec -T grafana sh -ceu '
+      : "${GF_SECURITY_ADMIN_USER:?GF_SECURITY_ADMIN_USER is required}"
+      : "${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD is required}"
+      printf "%s" "$GF_SECURITY_ADMIN_PASSWORD" \
+        | grafana cli admin reset-admin-password --password-from-stdin >/dev/null
+      curl --fail --silent --show-error \
+        --user "$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD" \
+        http://127.0.0.1:3000/api/user >/dev/null
+    ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "$interval"
+  done
+  echo "Grafana administrator credentials could not be synchronized" >&2
+  return 1
+}
+
 activate_release() {
   local deploy_root=$1
   local release_dir=$2
@@ -115,6 +146,10 @@ restore_previous_or_stop() {
     set_deployment_mode "$(release_deployment_mode "$previous")"
     if ! compose up -d --no-build --remove-orphans; then
       echo "Previous release could not be restarted" >&2
+      return 1
+    fi
+    if ! sync_grafana_admin_credentials; then
+      echo "Previous release Grafana credentials could not be restored" >&2
       return 1
     fi
     if ! wait_for_internal_health; then
@@ -168,6 +203,13 @@ deploy() {
     fi
     return 1
   fi
+  if ! sync_grafana_admin_credentials; then
+    echo "Release $release_id failed to synchronize Grafana credentials" >&2
+    if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
+      echo "Automatic recovery failed" >&2
+    fi
+    return 1
+  fi
   if ! wait_for_internal_health; then
     echo "Release $release_id failed internal health checks" >&2
     if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
@@ -186,6 +228,17 @@ deploy() {
 rollback() {
   local deploy_root=$1
   local previous_file="$deploy_root/.previous-release"
+  local current_link="$deploy_root/current"
+  [[ -L "$current_link" ]] || {
+    echo "No active release exists to roll back" >&2
+    exit 1
+  }
+  local current
+  current=$(readlink -f "$current_link")
+  [[ -d "$current" && -f "$current/.env" ]] || {
+    echo "Active release is unavailable: $current" >&2
+    exit 1
+  }
   [[ -f "$previous_file" ]] || {
     echo "No previous release is recorded" >&2
     exit 1
@@ -200,8 +253,24 @@ rollback() {
   cd "$previous"
   set_deployment_mode "$(release_deployment_mode "$previous")"
   compose config -q
-  compose up -d --no-build --remove-orphans
-  wait_for_internal_health
+  if ! compose up -d --no-build --remove-orphans; then
+    echo "Rollback target could not be started" >&2
+    restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
+      echo "Active release recovery failed" >&2
+    return 1
+  fi
+  if ! sync_grafana_admin_credentials; then
+    echo "Rollback target Grafana credentials could not be synchronized" >&2
+    restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
+      echo "Active release recovery failed" >&2
+    return 1
+  fi
+  if ! wait_for_internal_health; then
+    echo "Rollback target failed internal health checks" >&2
+    restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
+      echo "Active release recovery failed" >&2
+    return 1
+  fi
   activate_release "$deploy_root" "$previous"
   rm -f "$previous_file"
   echo "Rolled back to $(basename "$previous")"

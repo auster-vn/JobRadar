@@ -100,6 +100,10 @@ jobs:
             scripts/deploy_production.sh scripts/prune_production_releases.sh \
             scripts/production_smoke.sh scripts/backup_loop.sh \
             | tar -xf - -C "$release_dir"
+          # The runner uses UMask=0077. Bind-mounted runtime configuration must
+          # remain readable by the non-root Prometheus, Grafana, and Caddy users.
+          find "$release_dir/infra" -type d -exec chmod 755 {} +
+          find "$release_dir/infra" -type f -exec chmod 644 {} +
           {
             printf 'BACKEND_IMAGE=%s-backend:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
             printf 'ML_IMAGE=%s-ml:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
