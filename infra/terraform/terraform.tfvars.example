@@ -1,5 +1,5 @@
 server_name       = "jobradarvn-production"
-server_type       = "cx32"
+server_type       = "cx33"
 location          = "nbg1"
 deployment_user   = "jobradar"
 ssh_public_key    = "ssh-ed25519 AAAA_REPLACE_ME deployment@example"

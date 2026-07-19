@@ -1610,8 +1610,8 @@ volumes: [pgdata, mlruns, grafana_data]
 | **Local Dev** | Docker Compose | $0 | Full stack on laptop |
 | **Staging** | Railway Hobby | ~$5 | API + Worker only |
 | **Prod (Small)** | Railway Pro + Railway PG | ~$25-40 | Up to 10k users, 100k jobs |
-| **Prod (Scale)** | Hetzner CX32 (CX31 replacement) | Verify current regional price | Self-hosted, ~1M jobs |
-| **Prod (HA)** | 2× Hetzner CX32 + Cloudflare | Verify current regional price | High availability |
+| **Prod (Scale)** | Hetzner CX33 | Verify current regional price | Self-hosted, ~1M jobs |
+| **Prod (HA)** | 2× Hetzner CX33 + Cloudflare | Verify current regional price | High availability |
 
 ### 16.3 `.env.example`
 
@@ -1754,7 +1754,7 @@ MVP is **done** when ALL of the following pass:
 - [x] Rate limiting: auth-aware (anon vs authenticated)
 - [x] Load test with k6 (target: 100 RPS, p95 < 500ms)
 - [x] Full documentation (README + API docs + data dictionary)
-- [ ] Deploy: apply validated Terraform and release Docker Compose on Hetzner CX32
+- [ ] Deploy: apply validated Terraform and release Docker Compose on Hetzner CX33
 
 ---
 

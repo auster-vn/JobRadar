@@ -9,13 +9,18 @@ run "secure_production_defaults" {
   }
 
   assert {
-    condition     = hcloud_server.production.server_type == "cx32"
-    error_message = "The production default must use the current CX32 plan."
+    condition     = hcloud_server.production.server_type == "cx33"
+    error_message = "The production default must use the current CX33 plan."
   }
 
   assert {
     condition     = hcloud_server.production.image == "ubuntu-24.04"
     error_message = "The production image must remain on Ubuntu 24.04."
+  }
+
+  assert {
+    condition     = output.firewall_name == "jobradarvn-production-firewall"
+    error_message = "The deployment workflow must receive the Terraform firewall name."
   }
 
   assert {

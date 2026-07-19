@@ -10,9 +10,9 @@ variable "server_name" {
 }
 
 variable "server_type" {
-  description = "Current shared Intel server type; CX31 is no longer orderable."
+  description = "Current shared Intel server type; retired plans are not orderable."
   type        = string
-  default     = "cx32"
+  default     = "cx33"
 }
 
 variable "location" {

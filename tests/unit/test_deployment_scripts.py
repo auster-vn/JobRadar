@@ -274,7 +274,20 @@ def test_release_and_deploy_are_separate_chained_gates() -> None:
     assert "packages: read" in deploy
     assert "Verify public production routes" in deploy
     assert "Roll back failed release" in deploy
-    assert "Fail unsuccessful deployment" in deploy
+    assert "if: failure() && (steps.deploy.outcome == 'failure'" in deploy
+    assert "continue-on-error:" not in deploy
+
+
+def test_deploy_temporarily_authorizes_only_the_hosted_runner() -> None:
+    deploy = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+
+    assert "HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}" in deploy
+    assert "HCLOUD_FIREWALL_NAME: ${{ vars.HCLOUD_FIREWALL_NAME" in deploy
+    assert '"${HCLOUD_TOKEN:?HCLOUD_TOKEN is required}"' in deploy
+    assert "manage_deploy_firewall.py authorize" in deploy
+    assert 'echo "cidr=$cidr" >> "$GITHUB_OUTPUT"' in deploy
+    assert "if: always() && steps.release.outcome == 'success'" in deploy
+    assert "manage_deploy_firewall.py revoke" in deploy
 
 
 def test_release_images_preserve_source_revision() -> None:

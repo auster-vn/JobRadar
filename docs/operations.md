@@ -243,7 +243,7 @@ setting behind a trusted reverse proxy that overwrites incoming forwarding heade
 ## Production deployment and backup
 
 Provision the host from `infra/terraform` before configuring CD. The module uses
-the current CX32 replacement for the retired CX31 plan, attaches the restrictive
+the current CX33 shared Intel plan, attaches the restrictive
 firewall before first boot, enables managed backups and protection, and prepares
 a non-root Docker deployment account through cloud-init. Store Terraform state
 in a private encrypted remote backend and export `HCLOUD_TOKEN`; never commit
@@ -309,11 +309,14 @@ bash /opt/jobradarvn/current/scripts/prune_production_releases.sh \
 ```
 
 Configure a protected GitHub Environment named `production` with required
-reviewers. Set `PRODUCTION_URL` and optional `DEPLOY_ROOT` environment variables,
-plus these environment secrets:
+reviewers. Set `PRODUCTION_URL`, `HCLOUD_FIREWALL_NAME` and optional `DEPLOY_ROOT`
+environment variables, plus these environment secrets:
 
 - `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_KEY` and a pinned
-  `PRODUCTION_KNOWN_HOSTS` entry.
+  `PRODUCTION_KNOWN_HOSTS` entry;
+- `HCLOUD_TOKEN`, used only to add the current GitHub-hosted runner's exact SSH
+  CIDR to the Terraform `firewall_name` output and revoke it in an `always()`
+  cleanup. A revoke failure fails the deployment;
 - `DOMAIN`, `DB_PASSWORD`, `JWT_SECRET_KEY`, `ADMIN_API_KEY`,
   `CV_ENCRYPTION_KEY` and `GRAFANA_ADMIN_PASSWORD`; `GRAFANA_ADMIN_USER`
   defaults to `admin`. Generate the CV key independently with at least 32

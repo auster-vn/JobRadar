@@ -30,6 +30,8 @@ jobs:
       PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
       PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
       PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      HCLOUD_FIREWALL_NAME: ${{ vars.HCLOUD_FIREWALL_NAME || 'jobradarvn-production-firewall' }}
       DOMAIN: ${{ secrets.DOMAIN }}
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
@@ -61,6 +63,7 @@ jobs:
           : "${PRODUCTION_USER:?PRODUCTION_USER is required}"
           : "${PRODUCTION_SSH_KEY:?PRODUCTION_SSH_KEY is required}"
           : "${PRODUCTION_KNOWN_HOSTS:?PRODUCTION_KNOWN_HOSTS is required}"
+          : "${HCLOUD_TOKEN:?HCLOUD_TOKEN is required}"
           : "${DOMAIN:?DOMAIN is required}"
           : "${DB_PASSWORD:?DB_PASSWORD is required}"
           : "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
@@ -69,6 +72,7 @@ jobs:
           : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
           (( ${#CV_ENCRYPTION_KEY} >= 32 ))
           [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          [[ "$HCLOUD_FIREWALL_NAME" =~ ^[A-Za-z0-9._-]+$ ]]
           [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]
           [[ "$ENABLE_ITVIEC_SCRAPER" =~ ^(true|false)$ ]]
           [[ "$ENABLE_TOPCV_SCRAPER" =~ ^(true|false)$ ]]
@@ -87,6 +91,15 @@ jobs:
           owner=${GITHUB_REPOSITORY_OWNER,,}
           echo "image_prefix=ghcr.io/$owner/jobradarvn" >> "$GITHUB_OUTPUT"
           echo "target=$PRODUCTION_USER@$PRODUCTION_HOST" >> "$GITHUB_OUTPUT"
+
+      - id: firewall
+        name: Temporarily authorize runner SSH
+        shell: bash
+        run: |
+          set -euo pipefail
+          cidr=$(python scripts/manage_deploy_firewall.py authorize \
+            --firewall-name "$HCLOUD_FIREWALL_NAME")
+          echo "cidr=$cidr" >> "$GITHUB_OUTPUT"
 
       - name: Configure SSH
         shell: bash
@@ -136,7 +149,8 @@ jobs:
           } | ssh "${{ steps.release.outputs.target }}" \
             "umask 077; cat > '$release_dir/.env'"
 
-      - name: Authenticate target to GHCR
+      - id: registry
+        name: Authenticate target to GHCR
         shell: bash
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -148,7 +162,6 @@ jobs:
 
       - id: deploy
         name: Deploy release
-        continue-on-error: true
         run: |
           # Validated release paths and SHA expand on the runner by design.
           # shellcheck disable=SC2029
@@ -158,21 +171,15 @@ jobs:
       - id: smoke
         name: Verify public production routes
         if: steps.deploy.outcome == 'success'
-        continue-on-error: true
         run: bash scripts/production_smoke.sh "https://$DOMAIN"
 
       - name: Roll back failed release
-        if: steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure'
-        continue-on-error: true
+        if: failure() && (steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure')
         run: |
           # The validated deployment root expands on the runner by design.
           # shellcheck disable=SC2029
           ssh "${{ steps.release.outputs.target }}" \
             "bash '$DEPLOY_ROOT/current/scripts/deploy_production.sh' rollback '$DEPLOY_ROOT'"
-
-      - name: Fail unsuccessful deployment
-        if: steps.deploy.outcome == 'failure' || steps.smoke.outcome == 'failure'
-        run: exit 1
 
       - name: Prune old releases
         if: success()
@@ -183,6 +190,11 @@ jobs:
             "bash '$DEPLOY_ROOT/current/scripts/prune_production_releases.sh' '$DEPLOY_ROOT' 5"
 
       - name: Remove registry credentials from target
-        if: always()
-        continue-on-error: true
+        if: always() && steps.registry.outcome == 'success'
         run: ssh "${{ steps.release.outputs.target }}" "docker logout ghcr.io"
+
+      - name: Revoke runner SSH authorization
+        if: always() && steps.release.outcome == 'success'
+        run: >-
+          python scripts/manage_deploy_firewall.py revoke
+          --firewall-name "$HCLOUD_FIREWALL_NAME"

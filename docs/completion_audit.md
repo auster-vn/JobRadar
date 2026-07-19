@@ -15,9 +15,11 @@ a published salary model with 11.88% MAPE and passing data readiness. Release
 retraining and all three GHCR image builds also pass at the audited code SHA.
 
 The project is **not yet production-complete**. The release deployment job
-stopped before SSH because no production host or secrets are configured.
-Hetzner provisioning, DNS/TLS, deployment and the public production smoke test
-remain required. No production URL or successful deployment is claimed here.
+stopped before SSH because no production host is configured. The Hetzner API
+token is now stored locally and in the protected GitHub Environment, but private
+encrypted remote state, an owned domain, provisioning, DNS/TLS, deployment and
+the public production smoke test remain required. No production URL or
+successful deployment is claimed here.
 
 ## Acceptance Matrix
 
@@ -26,16 +28,16 @@ remain required. No production URL or successful deployment is claimed here.
 | MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 246 tests pass with 80.68% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 257 tests pass with 80.72% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally and in CI |
 | Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
-| Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
+| Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass; the live firewall API authorize/revoke contract was exercised without leaking a resource |
 | Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29681248259](https://github.com/auster-vn/JobRadar/actions/runs/29681248259) completed every job successfully |
-| Release workflow | Pass | [Run 29681472269](https://github.com/auster-vn/JobRadar/actions/runs/29681472269) published the model and all three images successfully |
-| Live production | Blocked | [Deploy 29681636684](https://github.com/auster-vn/JobRadar/actions/runs/29681636684) failed before SSH because no host or DNS exists for smoke tests |
+| GitHub CI | Pass | [Run 29681740068](https://github.com/auster-vn/JobRadar/actions/runs/29681740068) completed every job successfully |
+| Release workflow | Pass | [Run 29681998252](https://github.com/auster-vn/JobRadar/actions/runs/29681998252) published the model and all three images successfully |
+| Live production | Blocked | [Deploy 29682160527](https://github.com/auster-vn/JobRadar/actions/runs/29682160527) failed before SSH because no host or DNS exists for smoke tests |
 
 ## Collection Evidence
 
@@ -128,8 +130,8 @@ local and GitHub release encoders produced the same canonical vocabulary digest,
 
 The following checks were completed on 2026-07-19:
 
-- Ruff lint and formatting, plus strict mypy over 102 source files;
-- 246 backend/unit/integration tests with 80.68% coverage and the 70% threshold
+- Ruff lint and formatting, plus strict mypy over 103 source files;
+- 257 backend/unit/integration tests with 80.72% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
@@ -146,33 +148,36 @@ The following checks were completed on 2026-07-19:
 ## Remote Delivery Evidence
 
 GitHub CI run
-[`29681248259`](https://github.com/auster-vn/JobRadar/actions/runs/29681248259)
+[`29681740068`](https://github.com/auster-vn/JobRadar/actions/runs/29681740068)
 passed backend, frontend, browser E2E, infrastructure, ML contract, ML
 publication and all three container builds at
-`62e0481385caef0be4bf6c18e2fd4cb1a11a8dfa`.
+`926932d86d84c59d0a40557937b2a7f0107cf7f6`.
 
 Dependent Release run
-[`29681472269`](https://github.com/auster-vn/JobRadar/actions/runs/29681472269)
+[`29681998252`](https://github.com/auster-vn/JobRadar/actions/runs/29681998252)
 reconstructed 3,208 rows, published MLflow run
-`fbaa55594d8548059eaec2fcdf1a4c22` at the same source revision with 11.8803047%
+`0b9d1cf792e14db48d471b42a86b8714` at the same source revision with 11.8803049%
 MAPE, and built/pushed backend, web and seeded ML images. Release completed
 successfully. It triggered independent Deploy run
-[`29681636684`](https://github.com/auster-vn/JobRadar/actions/runs/29681636684),
+[`29682160527`](https://github.com/auster-vn/JobRadar/actions/runs/29682160527),
 which correctly failed before SSH with `PRODUCTION_HOST is required`.
 
 - the GitHub `production` Environment permits deployment only from `main`;
 - a dedicated deploy key and generated application secrets are configured;
+- the Hetzner token is stored as the `HCLOUD_TOKEN` Environment secret, and the
+  workflow's temporary runner-only SSH rule passed a live API contract probe;
 - the three reviewed scraper flags are enabled; and
-- no local Hetzner token, production state, domain, host, pinned host key or
-  public endpoint is available.
+- no private encrypted Terraform state, domain, host, pinned host key or public
+  endpoint is available.
 
 This is an external provisioning blocker and a failed deployment gate; the
 successful artifact Release is not presented as production evidence.
 
 ## Remaining Production Gates
 
-1. Provide a Hetzner API token and an owned production domain/subdomain, then
-   provision the host with the validated Terraform module and update DNS.
+1. Configure a private encrypted remote Terraform backend and provide an owned
+   production domain/subdomain, then provision the host with the validated
+   Terraform module and update DNS.
 2. Configure the resulting `PRODUCTION_HOST`, pinned
    `PRODUCTION_KNOWN_HOSTS`, `DOMAIN`, `PRODUCTION_URL` and monitored scraper
    contact address in the protected Environment.
