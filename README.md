@@ -10,9 +10,10 @@ Next.js dashboard.
 
 > **Project status:** the measured MVP runs locally and the salary-model
 > publication gate now passes on a clean database: 11.66% MAPE against a fixed
-> 15% maximum with `data_readiness=true`. CI, release and live Hetzner deployment
-> evidence are tracked separately; no live deployment is claimed until the
-> production smoke test passes. See the
+> 15% maximum with `data_readiness=true`. GitHub CI passes, and release retraining
+> plus all three GHCR image builds pass. Live Hetzner deployment is blocked on
+> production host, DNS and secret configuration; no live deployment is claimed
+> until the production smoke test passes. See the
 > [completion audit](docs/completion_audit.md) for current evidence.
 
 ## Capabilities
@@ -42,7 +43,9 @@ Current acceptance results are recorded in
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed on desktop/mobile paths |
 | Salary publication | Pass locally: 11.66% MAPE vs. 15% maximum; readiness pass |
-| Live production deployment | Not yet executed |
+| GitHub CI | [Run 29678361931](https://github.com/auster-vn/JobRadar/actions/runs/29678361931) passed every job |
+| Release model and images | Passed in [run 29678660335](https://github.com/auster-vn/JobRadar/actions/runs/29678660335) |
+| Live production deployment | Blocked before SSH: production host, DNS and secrets are not configured |
 
 ## Architecture
 
@@ -337,10 +340,12 @@ the protected host and firewall; cloud-init configures a non-root deployment
 account; Caddy terminates TLS; GitHub Actions builds commit-addressed GHCR images
 and deploys immutable release directories with smoke testing and rollback.
 
-No live deployment is claimed in this repository. Provisioning requires an
-owner-approved Terraform apply, DNS, GitHub Environment secrets, and a verified
-public smoke test. Follow [`docs/operations.md`](docs/operations.md) for the
-complete deployment, backup, restore, rotation, and rollback runbook.
+The release pipeline has retrained the revision-bound model and published all
+three images for commit `b124dbecbced92544f820bd88a9454fe8b8b6b93`. No live
+deployment is claimed: provisioning still requires an owner-approved Terraform
+apply, DNS, GitHub Environment secrets, and a verified public smoke test. Follow
+[`docs/operations.md`](docs/operations.md) for the complete deployment, backup,
+restore, rotation, and rollback runbook.
 
 ## Documentation
 

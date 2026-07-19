@@ -9,14 +9,14 @@ the relevant test, release, deployment and smoke-test evidence must also exist.
 
 ## Current Verdict
 
-The application and salary publication path pass their local quality gates. A
-clean database reconstructed from the six pinned snapshots produces a published
-salary model with 11.66% MAPE and passing data readiness. Collection, backend,
-frontend, analytics, infrastructure, monitoring and all three release images
-have also been exercised locally.
+The application and salary publication path pass their local quality gates and
+GitHub CI. A clean database reconstructed from the six pinned snapshots produces
+a published salary model with 11.66% MAPE and passing data readiness. Release
+retraining and all three GHCR image builds also pass at the audited code SHA.
 
-The project is **not yet production-complete**. The final GitHub CI run, release
-workflow, Hetzner deployment and public production smoke test for this revision
+The project is **not yet production-complete**. The release deployment job
+stopped before SSH because no production host or secrets are configured.
+Hetzner provisioning, DNS/TLS, deployment and the public production smoke test
 remain required. No production URL or successful deployment is claimed here.
 
 ## Acceptance Matrix
@@ -26,15 +26,16 @@ remain required. No production URL or successful deployment is claimed here.
 | MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass locally | Ruff, Ruff format, strict mypy and 244 tests pass with 80.64% coverage; the repository enforces at least 70% |
-| Analytics | Pass locally | dbt source freshness passes and `dbt build` completes 32/32 nodes |
-| Frontend | Pass locally | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 244 tests pass with 80.64% coverage; CI enforces at least 70% |
+| Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
+| Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally and in CI |
 | Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
-| Salary ML publication | Pass locally | Frozen TopCV holdout MAPE 11.66% versus a fixed 15% maximum; readiness passes |
-| Infrastructure contract | Pass locally | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
-| Release images | Pass locally | Backend, web and release-seeded ML images build; the ML image installs and serves its exact revision-bound artifact |
-| GitHub CI and release | Pending | This revision has not yet been pushed and observed through both workflows |
-| Live production | Pending | Terraform apply, DNS/TLS, deployment and public health/API/browser smoke tests have not yet run |
+| Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.66% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
+| Infrastructure contract | Pass | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
+| Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
+| GitHub CI | Pass | [Run 29678361931](https://github.com/auster-vn/JobRadar/actions/runs/29678361931) completed every job successfully |
+| Release workflow | Partial | [Run 29678660335](https://github.com/auster-vn/JobRadar/actions/runs/29678660335) passed model and image jobs, then failed deployment input validation |
+| Live production | Blocked | No host, DNS, production secrets or public endpoint exist for migration/API/browser smoke tests |
 
 ## Collection Evidence
 
@@ -138,20 +139,39 @@ The following checks were completed on 2026-07-19:
 - seeded ML-image installation plus a serving health check with
   `model_available=true` and matching image/artifact revisions.
 
-The GitHub run URL remains pending until this revision is pushed and the remote
-workflow reaches a terminal state.
+## Remote Delivery Evidence
+
+GitHub CI run
+[`29678361931`](https://github.com/auster-vn/JobRadar/actions/runs/29678361931)
+passed backend, frontend, browser E2E, infrastructure, ML contract, ML
+publication and all three container builds at
+`b124dbecbced92544f820bd88a9454fe8b8b6b93`.
+
+Dependent release run
+[`29678660335`](https://github.com/auster-vn/JobRadar/actions/runs/29678660335)
+reconstructed 3,208 rows, published MLflow run
+`85017efab712402a930dfeea677b6902` at the same source revision with 11.6619927%
+MAPE, and built/pushed backend, web and seeded ML images. The overall workflow
+correctly failed before SSH with `PRODUCTION_HOST is required`. At that point:
+
+- the GitHub `production` Environment existed but had no protection rules;
+- no repository or environment Actions secrets were configured;
+- no repository Actions variables were configured; and
+- no local Hetzner token, production variable file, domain, host or SSH key was
+  available.
+
+This is an external provisioning blocker, not a passed release/deployment gate.
 
 ## Remaining Production Gates
 
-1. Commit the final evidence at a real Git SHA and rerun the complete local
-   validation suite without deselecting the evidence contract.
-2. Push `main`, observe the CI workflow to success, then observe the dependent
-   release workflow through model training and all container builds.
-3. Provision the protected production host, configure DNS/TLS and the GitHub
-   `production` Environment with unique secrets.
-4. Deploy the immutable SHA-tagged release and pass migration, internal health,
-   public API, salary-model availability and essential browser smoke tests.
-5. Confirm a clean worktree and that local `main` equals `origin/main`.
+1. Provision the production host with Terraform and point an owned DNS name at
+   it.
+2. Protect the GitHub `production` Environment and configure the required host,
+   SSH and application secrets plus `PRODUCTION_URL`.
+3. Rerun release for the immutable SHA and pass deployment migration, internal
+   health, public API, salary-model availability and browser smoke tests.
+4. Record the production URL and successful release run, then confirm a clean
+   worktree with local `main` equal to `origin/main`.
 
 Until those gates have direct evidence, JobRadar remains locally validated but
 not production-complete.
