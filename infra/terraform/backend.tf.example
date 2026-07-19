@@ -1,9 +1,0 @@
-terraform {
-  backend "s3" {
-    bucket       = "replace-with-private-terraform-state-bucket"
-    key          = "jobradarvn/production.tfstate"
-    region       = "replace-with-region"
-    use_lockfile = true
-    encrypt      = true
-  }
-}

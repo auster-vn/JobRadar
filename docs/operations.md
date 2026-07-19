@@ -245,11 +245,14 @@ setting behind a trusted reverse proxy that overwrites incoming forwarding heade
 Provision the host from `infra/terraform` before configuring CD. The module uses
 the current CX33 shared Intel plan, attaches the restrictive
 firewall before first boot, enables managed backups and protection, and prepares
-a non-root Docker deployment account through cloud-init. Store Terraform state
-in a private encrypted remote backend and export `HCLOUD_TOKEN`; never commit
-tokens, state, `backend.tf` or `terraform.tfvars`. After `terraform apply`, create
-DNS A/AAAA records from the outputs and wait for `/var/lib/cloud/instance/boot-finished`
-on the host before enabling releases.
+a non-root Docker deployment account through cloud-init. The committed HCP
+Terraform `cloud` block selects organization `auster-vn-jobradar`, workspace
+`jobradarvn-production`, and local execution. Run `terraform login
+app.terraform.io`, then `terraform init`; HCP stores encrypted, locked state
+while the local CLI uses the exported `HCLOUD_TOKEN`. Never commit
+credentials, tokens, state, plans or `terraform.tfvars`. After reviewing and
+applying a saved plan, create DNS A/AAAA records from the outputs and wait for
+`/var/lib/cloud/instance/boot-finished` on the host before enabling releases.
 
 Set `DOMAIN`, `DB_PASSWORD`, a random `JWT_SECRET_KEY` of at least 32 characters,
 and a separate `ADMIN_API_KEY` of at least 24 characters. Use URL-safe random
@@ -308,9 +311,11 @@ bash /opt/jobradarvn/current/scripts/prune_production_releases.sh \
   /opt/jobradarvn 5
 ```
 
-Configure a protected GitHub Environment named `production` with required
-reviewers. Set `PRODUCTION_URL`, `HCLOUD_FIREWALL_NAME` and optional `DEPLOY_ROOT`
-environment variables, plus these environment secrets:
+Configure a protected GitHub Environment named `production` and restrict it to
+the `main` branch. Repositories with multiple production operators should also
+require reviewers; a solo deployment may omit that manual approval gate. Set
+`PRODUCTION_URL`, `HCLOUD_FIREWALL_NAME` and optional `DEPLOY_ROOT` environment
+variables, plus these environment secrets:
 
 - `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_KEY` and a pinned
   `PRODUCTION_KNOWN_HOSTS` entry;

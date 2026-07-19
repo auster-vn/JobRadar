@@ -25,7 +25,6 @@ artifacts/datasets/
 artifacts/mlruns/
 artifacts/salary/
 infra/terraform/.terraform/
-infra/terraform/backend.tf
 infra/terraform/terraform.tfvars
 infra/terraform/*.tfplan
 infra/terraform/*.tfstate

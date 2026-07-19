@@ -7,21 +7,32 @@ authoritative DNS provider is deployment-specific.
 ## Prerequisites
 
 - Terraform 1.10 or newer.
-- A private remote state backend. Copy and configure `backend.tf.example`; never
-  commit state or API tokens.
+- Access to the HCP Terraform organization `auster-vn-jobradar` and its
+  `jobradarvn-production` workspace. The workspace uses local execution: HCP
+  Terraform stores and locks state, while provider operations run on the
+  operator machine.
 - A Hetzner Cloud project token exported as `HCLOUD_TOKEN`.
 - A dedicated deployment SSH key and narrow administrative source CIDRs.
+
+Authenticate the Terraform CLI once with `terraform login app.terraform.io`.
+Keep the generated credentials file private and never commit credentials,
+provider tokens, state or `terraform.tfvars`. HCP Terraform encrypts workspace
+state at rest and uses TLS in transit; see the
+[HCP Terraform security model](https://developer.hashicorp.com/terraform/cloud-docs/architectural-details/security-model).
 
 ## Provision
 
 ```bash
 cd infra/terraform
 cp terraform.tfvars.example terraform.tfvars
-cp backend.tf.example backend.tf
 terraform init
 terraform plan -out=production.tfplan
 terraform apply production.tfplan
 ```
+
+The committed `cloud` block selects exactly one workspace, so do not add a
+separate backend configuration. Review every saved plan before apply. A plan
+does not create billable resources; apply does.
 
 Create DNS A and AAAA records from the outputs, wait for cloud-init to finish,
 then use `deployment_target` to configure the protected GitHub `production`
