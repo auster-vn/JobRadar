@@ -276,15 +276,22 @@ empty database with `pg_restore --clean --if-exists --no-owner` after first
 validating the dump on a staging instance. `scripts/backup_postgres.sh` remains
 available for an immediate operator-triggered dump.
 
-### GitHub Actions release deployment
+### GitHub Actions release and deployment
 
 `.github/workflows/release.yml` runs after a successful `CI` workflow on `main`
-or through `workflow_dispatch`. It builds backend, ML and web images, pushes
-commit-SHA tags to GHCR, uploads only runtime configuration, then deploys with
+or through `workflow_dispatch`. It reconstructs and validates the salary model,
+then builds backend, ML and web images and pushes immutable commit-SHA tags to
+GHCR. A successful Release run triggers `.github/workflows/deploy.yml`; a failed
+model or image gate cannot start deployment. Deploy may also be rerun explicitly
+through `workflow_dispatch` without rebuilding an already published release.
+
+Deploy uploads only runtime configuration and starts the target with
 `--no-build`. The target stores immutable releases under
 `/opt/jobradarvn/releases/<commit>` by default. Internal health checks activate
 the new `current` symlink; public TLS smoke checks cover readiness, dashboard,
-jobs and salary routes. A failed release restores the previous release.
+jobs and salary routes. A failed deployment or smoke test restores the previous
+release and leaves the Deploy workflow failed. Release success is artifact
+evidence only and is never treated as production-deployment evidence.
 
 Cloud-init configures Docker's `local` log driver with three 10 MB files per
 container. Before pulling a release, the deployment script removes dangling

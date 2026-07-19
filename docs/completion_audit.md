@@ -26,7 +26,7 @@ remain required. No production URL or successful deployment is claimed here.
 | MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 244 tests pass with 80.64% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 245 tests pass with 80.64% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally and in CI |
 | Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
@@ -125,7 +125,7 @@ predictor; full limitations are documented in
 The following checks were completed on 2026-07-19:
 
 - Ruff lint and formatting, plus strict mypy over 102 source files;
-- 244 backend/unit/integration tests with 80.64% coverage and the 70% threshold
+- 245 backend/unit/integration tests with 80.64% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;

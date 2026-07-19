@@ -37,7 +37,7 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 244 passed |
+| Backend unit and integration tests | 245 passed |
 | Combined API, NLP, scraper, and ML coverage | 80.64% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |

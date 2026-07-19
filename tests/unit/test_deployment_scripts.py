@@ -235,8 +235,8 @@ def test_release_cleanup_aborts_before_deletion_on_unsafe_metadata(
     assert stale.is_dir()
 
 
-def test_release_workflow_propagates_every_scraper_flag() -> None:
-    workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+def test_deploy_workflow_propagates_every_scraper_flag() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
 
     assert "SCRAPER_CONTACT_EMAIL: ${{ vars.SCRAPER_CONTACT_EMAIL" in workflow
     assert "printf 'SCRAPER_CONTACT_EMAIL=%s\\n' \"$SCRAPER_CONTACT_EMAIL\"" in workflow
@@ -260,6 +260,21 @@ def test_release_workflow_propagates_every_scraper_flag() -> None:
         "docker://rhysd/actionlint@sha256:"
         "b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667"
     ) in ci_workflow
+
+
+def test_release_and_deploy_are_separate_chained_gates() -> None:
+    release = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    deploy = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
+
+    assert "workflows: [CI]" in release
+    assert "push: true" in release
+    assert "\n  deploy:" not in release
+    assert "workflows: [Release]" in deploy
+    assert "github.event.workflow_run.conclusion == 'success'" in deploy
+    assert "packages: read" in deploy
+    assert "Verify public production routes" in deploy
+    assert "Roll back failed release" in deploy
+    assert "Fail unsuccessful deployment" in deploy
 
 
 def test_release_images_preserve_source_revision() -> None:
