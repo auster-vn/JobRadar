@@ -13,6 +13,8 @@ from nlp.salary_parser import SalaryRange, parse_salary
         ("Từ 18 triệu", SalaryRange(18_000_000, None, False)),
         ("Tới $ 3,000 /tháng", SalaryRange(None, 75_000_000, False, "USD")),
         ("200tr-700tr ₫/năm", SalaryRange(16_666_667, 58_333_333, False)),
+        ("Tới 0.0 triệu", SalaryRange(None, None, True)),
+        ("0 - 0 triệu", SalaryRange(None, None, True)),
         ("Thương lượng", SalaryRange(None, None, True)),
         (None, SalaryRange(None, None, True)),
     ],
@@ -23,3 +25,8 @@ def test_parse_salary(raw: str | None, expected: SalaryRange) -> None:
 
 def test_parser_normalizes_reversed_range() -> None:
     assert parse_salary("30 - 20 triệu") == SalaryRange(20_000_000, 30_000_000, False)
+
+
+def test_salary_range_rejects_non_positive_values() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        SalaryRange(None, 0, False)

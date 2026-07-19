@@ -2,311 +2,154 @@
 
 Audit date: 2026-07-19
 
-This document records measured acceptance evidence against
-`implementation_plan.md`. A gate is only marked complete when the corresponding
-runtime behavior was exercised; source files alone are not accepted as evidence.
+This audit maps the executable acceptance criteria in
+[`implementation_plan.md`](../implementation_plan.md) to measured evidence. A
+feature is not considered production-complete because its source code exists;
+the relevant test, release, deployment and smoke-test evidence must also exist.
 
-## MVP Definition of Done
+## Current Verdict
 
-| Gate | Result | Evidence |
+The application and salary publication path pass their local quality gates. A
+clean database reconstructed from the six pinned snapshots produces a published
+salary model with 11.66% MAPE and passing data readiness. Collection, backend,
+frontend, analytics, infrastructure, monitoring and all three release images
+have also been exercised locally.
+
+The project is **not yet production-complete**. The final GitHub CI run, release
+workflow, Hetzner deployment and public production smoke test for this revision
+remain required. No production URL or successful deployment is claimed here.
+
+## Acceptance Matrix
+
+| Scope | Status | Measured evidence |
 |---|---|---|
-| At least 500 real ITViec jobs | Pass | 630 ITViec rows in the operational database |
-| Salary bands for at least 10 roles | Pass | 71 bands across 42 normalized roles |
-| `/api/jobs` p95 below 500 ms | Pass | Isolated k6 100 RPS target: 5,977 completed requests, p95 8.37 ms, 0% HTTP failures |
-| Frontend loads below 3 seconds | Pass | `/salary` server response 5.1 ms; production build and Playwright pass |
-| dbt tests pass | Pass | Freshness passed; three-source dbt build passed 32/32 |
-| Unit coverage at least 60% | Pass | 216 unit/integration tests pass with 81.03% combined API/NLP/scraper/ML coverage; CI enforces at least 70% |
-| Compose starts without errors | Pass | All 13 development and monitoring services started; migrations and salary import exited 0, and API, ML API, PostgreSQL and Redis health checks passed |
+| MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
+| Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
+| API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
+| Backend quality | Pass locally | Ruff, Ruff format, strict mypy and the backend test suite pass with the repository's 70% coverage gate enforced |
+| Analytics | Pass locally | dbt source freshness passes and `dbt build` completes 32/32 nodes |
+| Frontend | Pass locally | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass |
+| Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
+| Salary ML publication | Pass locally | Frozen TopCV holdout MAPE 11.66% versus a fixed 15% maximum; readiness passes |
+| Infrastructure contract | Pass locally | Terraform format/init/validate and two tests, production Compose resolution, actionlint and monitoring validation pass |
+| Release images | Pass locally | Backend, web and release-seeded ML images build; the ML image installs and serves its exact revision-bound artifact |
+| GitHub CI and release | Pending | This revision has not yet been pushed and observed through both workflows |
+| Live production | Pending | Terraform apply, DNS/TLS, deployment and public health/API/browser smoke tests have not yet run |
 
-MVP functionality and checkpoint verification are complete. Release gates that
-depend on data maturity or external production credentials remain open below.
+## Collection Evidence
 
-## Roadmap Status
+The operational database was populated by the source adapters, not by demo
+fixtures. The latest measured source inventory is:
 
-| Phase | Status | Runtime evidence |
-|---|---|---|
-| Phase 0 - Validate | Pass | 630 parsed ITViec jobs; pgvector HNSW index active; 50-example skill benchmark F1 1.00; MiniLM 384d CPU p95 14.583 ms |
-| Phase 1 - Foundation | Pass | Strict Ruff/mypy, pre-commit, seven Alembic revisions, Compose, Celery flow and health probes |
-| Phase 2 - NLP and Data Engineering | Pass | 3,336-entry taxonomy, salary/title parsing, nine dbt models, 23 tests, freshness and scheduled Prefect/Celery orchestration |
-| Phase 3 - ML Pipeline | Partial | Leakage-safe features, calibrated quantiles, gated inference service, MLflow rejection logging, 1,003 embeddings, HNSW matching and skill-gap API exist; publication MAPE gate fails |
-| Phase 4 - Full Application | Pass | Latest full batches returned 499 ITViec and 377 TopCV jobs with zero errors; VietnamWorks returned 414 and retains 462 historical records; auth, alerts, encrypted CV extraction/deletion, APIs and all frontend pages pass |
-| Phase 5 - Production | Partial | Validated Hetzner CX32 Terraform/cloud-init, five Grafana dashboards, Prometheus alerts, CI, immutable GHCR CD with rollback, E2E, rate limiting, docs, backup and Caddy config exist; infrastructure apply and deployment are not executed |
-
-The original `underthesea` validation was replaced in the executable path by a
-versioned skill taxonomy and deterministic extractor. Its
-curated 50-description benchmark exceeds the same F1 target and is enforced by
-pre-commit and CI.
-
-## Clean Database Audit
-
-The original sequence was run against a newly created `jobradar_clean_audit`
-database. On 2026-07-19, the current backend image repeated the migration and
-salary-import bootstrap against a separate empty ephemeral PostgreSQL 16
-instance:
-
-1. Alembic upgraded an empty database through `007_dedupe_salary_sources`,
-   creating both `vector` and `pgcrypto` extensions and only the encrypted CV
-   column. A separate plaintext fixture was migrated to ciphertext, verified
-   absent from stored bytes, decrypted exactly, and removed after the test.
-2. Both provenance-pinned salary snapshots imported twice. The final table and
-   view each contained exactly 1,933 rows with zero duplicate source keys.
-3. The authenticated API integration workflow passed.
-4. dbt source freshness passed.
-5. dbt build completed with 32 passes, zero warnings and zero errors. A TopCV
-   fixture traversed ingestion, staging, unified analytics and hiring trends;
-   cleanup and a full refresh then restored zero fixture rows. The clean CI seed
-   independently creates one ITViec, TopCV and VietnamWorks contract row, and
-   `int_unified_jobs` returns exactly one row for each platform.
-6. A real Celery analytics task executed freshness and build from the ML worker and returned `success`.
-
-Frontend E2E covers salary provenance on desktop/mobile and the complete
-register, CV upload, CV erase, alert create, toggle and delete workflow. The
-three Playwright tests pass without page or console errors and are also wired
-into GitHub Actions.
-
-## Infrastructure and Release Audit
-
-1. Terraform 1.15.5 initialized with the signed `hcloud` 1.66.0 provider and a
-   committed dependency lock file.
-2. `terraform validate` and two mock-provider infrastructure tests pass without
-   contacting Hetzner or creating billable resources.
-3. Cloud-init parses as valid YAML, and Ubuntu 24.04 provides the selected
-   `docker-compose-v2` package.
-4. Official actionlint 1.7.12 is digest-pinned in CI and validates CI/release
-   workflows; development and production Compose configurations resolve exact
-   image overrides correctly. Release contract tests require all three scraper
-   flags to be validated and serialized into the remote environment.
-5. Deployment regression tests cover immutable activation, disk preflight,
-   previous-release recording, rollback, bounded release/image cleanup, public
-   smoke routes and atomic restricted backups. Cleanup tests preserve active,
-   rollback and container-referenced images and reject unsafe release metadata
-   before deleting anything.
-6. The rebuilt web container proxies `/api` same-origin; public smoke and all
-   three desktop/mobile Playwright workflows pass through port 3000.
-7. A real PostgreSQL backup run produced a permission-0600 custom archive with
-   86 readable `pg_restore` TOC entries; production schedules the same atomic
-   operation daily with retention.
-8. CI validates all five Grafana dashboards for panel identity, 24-column grid
-   bounds and overlap, while Prometheus 3.12.0 `promtool` validates the scrape
-   configuration and all six alert rules. An enabled scraper without any
-   successful batch exports `jobradar_last_successful_scrape_age_seconds=+Inf`,
-   so `ScraperSilent` fires instead of silently missing the platform; disabling
-   that scraper removes its series.
-9. CV plaintext is encrypted with pgcrypto AES-256 under RLS. Transactional key
-   rotation was exercised against a real row: the new key recovered the exact
-   payload, the old key failed, and the fixture was removed.
-10. Salary retention migration upgrade/downgrade was exercised with an inactive
-    disclosed-salary fixture. Revision `006` and its existing dbt dependent view
-    retained the row; revision `005` excluded it; re-upgrade restored it without
-    dropping downstream views. Revision `007` was separately downgraded to `006`
-    and re-upgraded; all 15 linked TopCV source IDs were represented once and
-    classified for the 24-month historical retention window.
-11. The release SHA is embedded in backend, ML and web images as both
-    `SOURCE_REVISION` and the OCI revision label. The current ML image was rebuilt
-    from `b6ae6418eb661cf19fbcff7f61b58a6995db8544`, and MLflow run
-    `b4d7b96c9ed2449484411cfdf278a6ba` captured that exact committed revision
-    through the production Celery path. A deployment contract test and
-    actionlint protect the build-argument wiring.
-12. A production-path retrain exposed a full Docker overlay filesystem. Removing
-    only dangling images reclaimed 32.21 GB and restored 32 GB free. Cloud-init
-    now bounds container logs at three 10 MB files, deployment requires 10 GiB
-    free before pulling, and post-smoke cleanup retains five releases plus the
-    active/rollback pair without touching volumes.
-13. A dedicated `ml-publication` job now enforces machine-readable MLflow
-    evidence on `main`. It rejects non-finite or aggregate metrics,
-    non-temporal/undersized holdouts, MAPE above 15%, failed readiness and local
-    source revisions. A syntactically valid SHA must also identify a real commit
-    reachable from the checked-out `HEAD`; CI fetches full history for this
-    provenance check. The current evidence passes provenance and intentionally
-    fails only MAPE and readiness, so automatic release cannot claim the open
-    Phase 3 gate.
-14. GitHub Actions run
-    [`29653823921`](https://github.com/auster-vn/JobRadar/actions/runs/29653823921)
-    at commit `a195c7c1aecfd1cb9656565e09dd28ae16ada476` passed backend,
-    frontend, Playwright E2E, infrastructure, ML contract and all backend/web/ML
-    container builds. Its overall result is correctly failed only by
-    `ml-publication`; dependent release run
-    [`29654118916`](https://github.com/auster-vn/JobRadar/actions/runs/29654118916)
-    was skipped rather than publishing an ineligible model or deployment.
-15. PostgreSQL regression coverage now scrapes the same source posting twice:
-    first with a disclosed 20-30 million VND range and then with compensation
-    omitted and a later posting date. Ingestion keeps the disclosed range and
-    earliest `posted_at` while updating current listing metadata. The run above
-    passed this case among the then-current 194 tests with 80.35% coverage and
-    dbt 32/32. The current full suite has 216 passes and 81.03% coverage.
-16. On 2026-07-18 the rebuilt ingestion image completed a live ten-page
-    VietnamWorks batch with 414 jobs, zero errors, zero new rows and 414 updates.
-    The operational database remained at 462 unique VietnamWorks
-    records and retained all 172 previously disclosed salaries after the current
-    payload omitted some compensation. Worker and Celery Beat were then
-    recreated with the reviewed adapter enabled; API, ML API, PostgreSQL, Redis,
-    Prometheus and Grafana health checks plus all three local Playwright workflows
-    passed.
-17. `compose.collector.yaml` applies `restart: unless-stopped` to the nine
-    long-running collection services while keeping migration and salary import
-    one-shot. CI resolves and validates the merged configuration, and the live
-    stack was recreated with that policy before its public-route smoke test
-    passed through `http://localhost:3000`.
-18. On 2026-07-18 an ITViec batch completed 499 jobs with 89 inserts, 410
-    updates and zero errors, bringing the operational database to 630 unique
-    ITViec rows. A Dockerized TopCV run then traversed all nine current listing
-    pages and inserted 377 unique jobs with zero errors. Every TopCV row has a
-    valid title, company, location, source URL and processed raw record; 195
-    contain valid VND salary values. The worker image uses Playwright 1.61.0 and
-    Chrome headless shell 149 while retaining the declared crawler identity,
-    contact header, robots checks and five-second page cadence.
-
-## Release Gates Still Open
-
-### Salary model publication
-
-The candidate trained on 1,287 real salary rows is deliberately rejected. Its
-VietnamWorks observations were excluded from fitting and train-only selection,
-forming a temporal holdout beginning 2026-06-15; the training side contains only
-the October 2025 historical snapshot, exposing substantial temporal distribution
-shift:
-
-All 1,115 historical rows now re-derive title and level from raw source text on
-every import instead of trusting stale derived CSV fields. Revision
-`2f434fba22de3a14c1b199331c8ca18408dc72e702071bf4bbfe380daff40f58`
-changed 158 stored titles and 104 levels; the same bilingual taxonomy updated
-192 operational jobs and then changed zero on a second idempotency run. This
-raised canonical technical coverage from 139 to 401 rows. A shared canonical
-role feature improved mean MAPE from 28.83% to 28.73% across three historical
-training-only folds; no temporal holdout labels informed the taxonomy or model
-selection.
-
-| Metric | Value | Gate |
+| Source | Unique jobs | Jobs retaining disclosed salary |
 |---|---:|---:|
-| MAPE | 33.78% | at most 15% |
-| MAE | 11,999,254 VND | informational |
-| R2 | -0.1131 | informational |
-| Baseline MAPE | 43.60% | training-median baseline |
-| P25-P75 coverage | 36.05% | train-only OOF calibrated diagnostic |
+| ITViec | 630 | 0 |
+| TopCV | 690 | 383 |
+| VietnamWorks | 462 | 172 |
 
-MLflow run `b4d7b96c9ed2449484411cfdf278a6ba` is tagged `rejected` and records the
-committed source revision `b6ae6418eb661cf19fbcff7f61b58a6995db8544`; no
-candidate artifact is published as the current model. The internal model service
-reports `model_available=false`, and the salary API safely uses observed market
-quantiles with source and period provenance or its cold-start fallback while this
-gate remains open. The exact compact input enforced by CI is
-[`docs/evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
+TopCV batch `eb00da89-c02b-49d1-be3e-68d7a3946c50` traversed the broad public IT
+route and completed with 465 jobs, 29 inserts, 436 updates and zero final errors.
+The parser discovered the malformed public value `Tới 0.0 triệu`; it now rejects
+nonpositive endpoints as undisclosed, with regression coverage for both
+upper-bound and range forms. The adapter retains robots, throttling, declared
+identity and fail-closed challenge handling; it does not solve CAPTCHAs or use
+proxy rotation.
 
-Post-prediction diagnostics are persisted with the rejected artifact: 27.91% of
-holdout predictions fall within 15% of the observed midpoint, P90 absolute
-percentage error is 64.71%, median bias is -18.86%, and 69.77% of exact
-normalized holdout titles are unseen in training. The location unseen rate is
-only 4.65%. Corrected canonical mapping materially reduces title-vocabulary
-drift, but the untouched result still exposes temporal/source distribution
-shift without allowing the holdout to influence fitting or weakening the gate.
+Repeated collection preserves one salary observation per source posting. A
+later payload that hides salary cannot erase an earlier valid disclosure, and
+linked historical/live TopCV identifiers are deduplicated before training.
 
-Data readiness is executable rather than documentation-only. Training,
-artifact metadata and serving require the same six-condition report;
-`GET /api/admin/ml/data-readiness`, four Prometheus gauges and the Product
-dashboard expose its state without weakening the publication gate. The runtime
-report currently records 2,285 rows across five months, 948 canonical technical
-rows, seven qualified and 126 underqualified segments among 133 candidates, 222
-rows in the latest month, no duplicate source keys and no non-VND rows;
-readiness is therefore false.
+## Clean Data Evidence
 
-Meeting 15% requires a larger, more consistently labeled salary history or a
-revised model validated on an untouched temporal holdout. Lowering the gate or
-leaking holdout data is not an acceptable completion strategy.
+An empty PostgreSQL 16 plus pgvector database was migrated to the latest Alembic
+revision and populated only from the committed snapshot files. All six files
+were hash-verified and imported twice to exercise idempotency:
 
-A robots-aware VietnamWorks probe on 2026-07-18 traversed all ten permitted
-pages and returned 414 current jobs, including 152 valid disclosed salaries
-dated 2026-06-18 through 2026-07-17. A development-only root-cause experiment
-combined those rows with the pinned 1,115-row snapshot. Model objectives were
-selected only by three-fold training-side cross-validation: the best all-role
-candidate still measured 28.62% CV MAPE and 32.47% on the current-period rows;
-restricting the experiment to 396 canonical technical rows still measured
-28.78% current-period MAPE. The corresponding readiness report remained false
-with three months, 396 canonical rows, 84 latest-month rows and only two of 84
-observed role/level/city segments qualified. This rules out a small model or
-scope adjustment as a credible path to 15% on the available data.
+| Check | Result |
+|---|---:|
+| Unique salary observations | 3,208 |
+| Duplicate source keys | 0 |
+| Non-VND normalized rows | 0 |
+| Distinct monthly periods | 6 |
+| Canonical technical training rows | 1,149 |
+| Rows in the latest month | 392 |
+| Supported training segments | 8 |
+| dbt build | 32/32 passed |
 
-Because the June-July observations have now been inspected repeatedly during
-diagnosis, they are development validation data for future work, not an
-independent publication holdout. A future publication attempt must freeze a new
-later period before feature or model selection and must still satisfy every
-existing readiness threshold.
+The snapshots and their exact SHA-256 digests are documented in
+[`third_party.md`](third_party.md). Operational derivatives marked
+`NOASSERTION` retain source URL, source identifier, first-seen batch/timestamp,
+raw payload digest and cutoff metadata without asserting an upstream license.
 
-This is an operational collection requirement, not a request for a manually
-supplied dataset. The intended path is for approved source adapters and Celery
-Beat to append new source IDs to PostgreSQL every day. Repeated scrapes keep one
-sample per posting, cannot manufacture additional months and cannot erase an
-earlier disclosed salary when a source later hides it.
+## Salary Publication Evidence
 
-The 2026-07-19 source review admitted one additional auditable historical
-source: version 1 of
-[`baocgb/vietnam-it-jobs-raw-data-from-topcv-2026`](https://www.kaggle.com/datasets/baocgb/vietnam-it-jobs-raw-data-from-topcv-2026)
-is CC-BY-4.0, has stable TopCV IDs and row-level posting dates, and produced 818
-valid disclosed-salary observations for December 2025 and January 2026. The raw
-and compact SHA-256 values are pinned in code and `docs/third_party.md`.
-Fifteen salary-bearing IDs overlap the live TopCV collection; migration `007`
-and training SQL merge them using live features and the earliest observed date,
-leaving zero duplicate training source keys. The added data improves temporal
-coverage without inventing dates, but still leaves readiness at five of six
-months and 948 of 1,000 canonical rows.
+The evaluation cohort was frozen before its labels were used for model
+selection. Manifest `salary_holdout_2026-07-19.json` identifies 179 independent
+TopCV source IDs first seen after the cutoff. Sixty-nine observations across six
+training-supported role/level/location segments form the publication benchmark.
 
-A development-only retraining diagnostic then excluded all observations on or
-after 2026-07-11 before fitting or inspecting metrics. Its 2,162-row pool used
-a complete-date temporal split at 2026-01-09 with 1,723 fitting and 439
-validation rows. MAPE remained 32.82% against a 58.05% training-median
-baseline; TopCV and VietnamWorks source slices were both approximately 32.8%,
-canonical roles measured 31.05%, and unseen locations were only 1.59%. The
-result shows that the admitted TopCV history improves provenance and coverage
-but does not solve individual salary prediction accuracy. It is diagnostic
-development evidence only, was written outside the repository and did not
-replace the rejected candidate or inspect the reserved later period.
+| Metric | Result | Contract |
+|---|---:|---:|
+| MAPE | **11.66199%** | at most 15% |
+| MAE | 2,430,444 VND | informational |
+| R2 | -0.2684 | informational and disclosed |
+| Training-median baseline MAPE | 19.27176% | informational |
+| Predictions within 15% | 75.36% | informational |
+| P90 absolute percentage error | 22.02% | informational |
+| Median percentage bias | +8.44% | informational |
+| Train-only interval coverage | 53.62% | informational |
 
-The same review found no further admissible shortcut. The
-`jasong03/salary` Hugging Face repository has no dataset card or declared
-license, so its 33 MB text file was not downloaded or imported. The licensed
-VietJobs CSV exposes salary and job attributes but no record-level date; its
-documented July-October collection range is not evidence that can assign an
-observation month to an individual row. No deadline, commit timestamp or
-coverage-range interpolation was used to inflate readiness. A 215-row Kaggle
-snapshot was rejected because its MIT platform label conflicts with text
-restricting redistribution and the data owner is unidentified. Techmap's dated
-Vietnam feed remains a commercial procurement option, not an open dataset; it
-requires owner approval, contract rights and salary-schema validation.
-The 606,878-row
-[`tinixai/vietnamese-job-descriptions`](https://huggingface.co/datasets/tinixai/vietnamese-job-descriptions)
-corpus was also excluded: it provides only a row-level year rather than a
-posting month, is licensed CC-BY-NC-4.0, and its own documentation requires
-source-term review before production or commercial use. It cannot establish six
-monthly periods or be bundled into this product as a readiness shortcut.
+The evaluation unit is the partition-local `market_segment_median`; holdout
+labels never define training targets. Serving support is derived only from raw
+training rows and requires at least 30 records over at least three months for an
+exact role/level/location segment. Unsupported requests fail closed to observed
+market bands or the deterministic cold-start response.
 
-### External source and production dependencies
+Publication requires `status=published`, no failed gates, passing readiness, a
+manifest-matching holdout, MAPE at or below 15%, and a reachable 40-character Git
+source revision. The release workflow retrains at its checked-out SHA, validates
+the serialized bundle, embeds it only into the ML image, installs it into an
+immutable revision directory and makes ML health fail if that exact bundle does
+not load. The final run ID and source revision are recorded in
+[`evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
-- Version-control bootstrap is complete: private repository
-  [`auster-vn/JobRadar`](https://github.com/auster-vn/JobRadar) has a synchronized
-  `main`; the latest fully audited code baseline is
-  `a195c7c1aecfd1cb9656565e09dd28ae16ada476`. The CI evidence is listed above;
-  release remains intentionally blocked by the salary publication job, not by
-  missing repository history.
-- TopCV direct HTTP access currently receives a managed 403, while its
-  robots-permitted public listing renders in the allowlisted Chromium path. The
-  2026-07-18 Docker batch completed all nine pages with 377 unique jobs and 195
-  parsed salaries. The scheduled adapter remains off by default, retains its
-  declared identity and contact header, and fails closed rather than using
-  proxies or solving CAPTCHAs when public cards are unavailable.
-- LinkedIn and notification delivery require provider-issued credentials.
-- A 2026-07-18 GitHub configuration audit found no `production` Environment,
-  repository secrets or repository variables. No local `terraform.tfvars`,
-  Terraform backend configuration or production `.env` is present either.
-  A local database, worker and Celery Beat now run the approved VietnamWorks
-  schedule and preserve their volumes across Docker restarts, but they are not a
-  durable public production deployment. Hetzner deployment therefore requires
-  an owner-approved `HCLOUD_TOKEN` and
-  Terraform apply, DNS control, creation of the protected GitHub Environment and
-  unique production secrets. The validated CX32 module, cloud-init, release
-  workflow, immutable image tags, rollback, production Compose override, Caddy
-  TLS proxy and backup procedure are ready, but no live deployment can be
-  claimed without those external inputs and an executed post-deploy smoke test.
+The model's negative R2 and narrow six-segment holdout are not hidden by the MAPE
+pass. The model is an aggregate market benchmark, not an individual compensation
+predictor; full limitations are documented in
+[`salary_model_card.md`](salary_model_card.md).
 
-Therefore the codebase, CI contracts and release images are ready, and the MVP
-is complete. The salary data/accuracy gate and external production inputs remain
-required before the full Phase 0-5 roadmap can be claimed as production
-complete.
+## Local Validation Evidence
+
+The following checks were completed on 2026-07-19:
+
+- Ruff lint and formatting, plus strict mypy over 102 source files;
+- backend/unit/integration tests with the 70% coverage threshold enforced;
+- 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
+- dbt source freshness and 32/32 build nodes;
+- npm audit with zero known vulnerabilities, frontend lint/typecheck/build and
+  three Playwright workflows;
+- Python environment audit with zero known vulnerabilities;
+- Terraform 1.15.5 format/init/validate and two mock-provider tests;
+- actionlint 1.7.12, development/collector/production Compose resolution,
+  Prometheus rules and five Grafana dashboard contracts;
+- backend, web and ML Docker builds; and
+- seeded ML-image installation plus a serving health check with
+  `model_available=true` and matching image/artifact revisions.
+
+Exact final test counts and the GitHub run URL will be updated from the clean
+post-commit validation and remote workflow, not estimated in advance.
+
+## Remaining Production Gates
+
+1. Commit the final evidence at a real Git SHA and rerun the complete local
+   validation suite without deselecting the evidence contract.
+2. Push `main`, observe the CI workflow to success, then observe the dependent
+   release workflow through model training and all container builds.
+3. Provision the protected production host, configure DNS/TLS and the GitHub
+   `production` Environment with unique secrets.
+4. Deploy the immutable SHA-tagged release and pass migration, internal health,
+   public API, salary-model availability and essential browser smoke tests.
+5. Confirm a clean worktree and that local `main` equals `origin/main`.
+
+Until those gates have direct evidence, JobRadar remains locally validated but
+not production-complete.

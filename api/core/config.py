@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     mlflow_experiment: str = "jobradar-salary"
     salary_model_url: str | None = None
     salary_model_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
+    salary_holdout_manifest: str | None = None
 
     @field_validator("cors_origins", mode="before")
     @classmethod

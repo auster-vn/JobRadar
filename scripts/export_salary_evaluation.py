@@ -12,8 +12,18 @@ METRIC_KEYS = (
     "test_r2",
     "baseline_mape",
     "interval_coverage",
+    "interval_radius",
+    "interval_calibration",
+    "interval_calibration_size",
     "train_size",
     "test_size",
+    "raw_train_size",
+    "raw_test_size",
+    "train_segment_count",
+    "test_segment_count",
+    "minimum_segment_rows",
+    "holdout_cohort",
+    "holdout_manifest_sha256",
     "split_strategy",
     "evaluation_unit",
     "train_period_start",
@@ -83,6 +93,13 @@ def build_evidence(metadata_bytes: bytes, *, run_id: str, source_revision: str) 
         readiness["underqualified_segments"] = underqualified
     else:
         raise ValueError("data_readiness.underqualified_segments must be a list or integer")
+    supported = readiness_source.get("supported_segments")
+    if isinstance(supported, list):
+        readiness["supported_segments"] = len(supported)
+    elif isinstance(supported, int) and not isinstance(supported, bool):
+        readiness["supported_segments"] = supported
+    else:
+        raise ValueError("data_readiness.supported_segments must be a list or integer")
 
     status = metadata.get("status")
     failed_gates = metadata.get("failed_gates", [])

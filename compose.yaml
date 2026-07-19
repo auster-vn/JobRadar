@@ -55,6 +55,7 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       SALARY_MODEL_URL: http://ml-api:8002
+      SALARY_HOLDOUT_MANIFEST: ${SALARY_HOLDOUT_MANIFEST:-data/salary_holdout_2026-07-19.json}
       DBT_HOST: db
       DBT_USER: jobradarvn
       DBT_PASSWORD: ${DB_PASSWORD:-jobradarvn}
@@ -72,7 +73,11 @@ services:
       - |
         python scripts/import_salary_snapshot.py \
           data/vietjobs_it_salary_observations.csv \
-          data/topcv_2026_it_salary_observations.csv
+          data/topcv_2026_it_salary_observations.csv \
+          data/topcv_canhphu_2026_salary_observations.csv \
+          data/topcv_2026-07-19_it_salary_observations.csv \
+          data/topcv_operational_2026-07-18_salary_observations.csv \
+          data/vietnamworks_operational_2026-07-18_salary_observations.csv
         python scripts/backfill_job_experience.py
         python scripts/backfill_job_locations.py
         python scripts/backfill_job_titles.py
@@ -131,6 +136,22 @@ services:
       mlflow:
         condition: service_started
 
+  salary-model:
+    image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
+    command:
+      - /bin/sh
+      - -ec
+      - >-
+        python scripts/install_salary_model.py ml/model_seed/current
+        "artifacts/salary/releases/$${SOURCE_REVISION}"
+    environment: *backend-env
+    volumes:
+      - ml_artifacts:/app/artifacts
+    depends_on:
+      salary-data:
+        condition: service_completed_successfully
+    restart: "no"
+
   ml-api:
     image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
     command: uvicorn ml.serving:app --host 0.0.0.0 --port 8002
@@ -141,6 +162,8 @@ services:
     depends_on:
       ml-worker:
         condition: service_started
+      salary-model:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: 10s

@@ -1,8 +1,10 @@
 import hashlib
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 from sqlalchemy import text
@@ -12,11 +14,17 @@ from api.core.database import session_factory
 from ml.features.salary_features import SalaryFeatureEncoder
 from ml.salary.model import SalaryPredictor
 from ml.salary.readiness import assess_salary_data_readiness
+from nlp.location_normalizer import normalize_location
+from nlp.title_normalizer import canonical_role
 
 MIN_TRAINING_ROWS = 200
 MIN_TEST_ROWS = 50
+MIN_TEST_SEGMENTS = 5
 MAPE_PUBLICATION_LIMIT = 0.15
 CALIBRATION_FOLDS = 3
+MIN_BENCHMARK_SEGMENT_ROWS = 3
+EVALUATION_UNIT = "market_segment_median"
+INTERVAL_COVERAGE_TARGET = 0.5
 SALARY_ROWS_SQL = """
 WITH historical_dates AS (
   SELECT source, source_record_id, min(source_snapshot_date) AS first_observed_on
@@ -86,6 +94,68 @@ ORDER BY source_snapshot_date, source_key
 """
 
 
+@dataclass(frozen=True, slots=True)
+class FrozenHoldout:
+    cohort_id: str
+    first_seen_at: str
+    source_keys: frozenset[str]
+    manifest_sha256: str
+    snapshot_sha256: str
+
+
+def load_frozen_holdout(path: Path) -> FrozenHoldout:
+    manifest_bytes = path.read_bytes()
+    try:
+        payload = json.loads(manifest_bytes)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"holdout manifest is not valid JSON: {exc.msg}") from exc
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        raise ValueError("holdout manifest must use schema_version 1")
+    source_keys = payload.get("source_keys")
+    if (
+        not isinstance(source_keys, list)
+        or not source_keys
+        or not all(isinstance(key, str) and ":" in key for key in source_keys)
+    ):
+        raise ValueError("holdout manifest source_keys must be a non-empty string list")
+    if len(source_keys) != len(set(source_keys)):
+        raise ValueError("holdout manifest contains duplicate source keys")
+    if payload.get("source_key_count") != len(source_keys):
+        raise ValueError("holdout manifest source_key_count does not match source_keys")
+    cohort_id = payload.get("cohort_id")
+    first_seen_at = payload.get("first_seen_at")
+    if not isinstance(cohort_id, str) or not cohort_id:
+        raise ValueError("holdout manifest cohort_id must be non-empty")
+    if not isinstance(first_seen_at, str):
+        raise ValueError("holdout manifest first_seen_at must be an ISO timestamp")
+    try:
+        observed_at = datetime.fromisoformat(first_seen_at)
+    except ValueError as exc:
+        raise ValueError("holdout manifest first_seen_at must be an ISO timestamp") from exc
+    if observed_at.tzinfo is None or observed_at.utcoffset() is None:
+        raise ValueError("holdout manifest first_seen_at must include a timezone")
+
+    snapshot_name = payload.get("snapshot")
+    expected_snapshot_sha256 = payload.get("snapshot_sha256")
+    if (
+        not isinstance(snapshot_name, str)
+        or Path(snapshot_name).name != snapshot_name
+        or not isinstance(expected_snapshot_sha256, str)
+    ):
+        raise ValueError("holdout manifest snapshot contract is invalid")
+    snapshot_path = path.parent / snapshot_name
+    actual_snapshot_sha256 = hashlib.sha256(snapshot_path.read_bytes()).hexdigest()
+    if actual_snapshot_sha256 != expected_snapshot_sha256:
+        raise ValueError("holdout snapshot SHA256 does not match its manifest")
+    return FrozenHoldout(
+        cohort_id=cohort_id,
+        first_seen_at=observed_at.isoformat(),
+        source_keys=frozenset(source_keys),
+        manifest_sha256=hashlib.sha256(manifest_bytes).hexdigest(),
+        snapshot_sha256=expected_snapshot_sha256,
+    )
+
+
 def _log_run(metrics: dict[str, float | int | str], status: str, artifact_dir: Path) -> str:
     import mlflow
 
@@ -150,11 +220,22 @@ def _observation_date(row: dict[str, Any]) -> date:
 
 def split_salary_rows(
     rows: Sequence[dict[str, Any]],
+    frozen_holdout: FrozenHoldout | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
     ordered = sorted(
         rows,
         key=lambda row: (_observation_date(row), str(row["source_key"])),
     )
+    if frozen_holdout is not None:
+        available_keys = {str(row["source_key"]) for row in ordered}
+        missing_keys = frozen_holdout.source_keys - available_keys
+        if missing_keys:
+            raise ValueError(
+                f"frozen holdout is missing {len(missing_keys)} source keys from salary data"
+            )
+        train = [row for row in ordered if str(row["source_key"]) not in frozen_holdout.source_keys]
+        test_rows = [row for row in ordered if str(row["source_key"]) in frozen_holdout.source_keys]
+        return train, test_rows, f"temporal:first_seen_at={frozen_holdout.first_seen_at}"
     dates = sorted({_observation_date(row) for row in ordered})
     temporal_candidates: list[tuple[int, date]] = []
     target_test_size = max(MIN_TEST_ROWS, round(len(ordered) * 0.2))
@@ -174,6 +255,48 @@ def split_salary_rows(
         digest = hashlib.sha256(str(row["source_key"]).encode()).digest()
         (test_rows if int.from_bytes(digest[:4]) % 5 == 0 else train).append(row)
     return train, test_rows, "stable_source_hash_80_20"
+
+
+def _benchmark_segment(row: dict[str, Any]) -> tuple[str, str, str] | None:
+    normalized_title = str(row.get("title_normalized") or "").strip()
+    role = canonical_role(normalized_title) or normalized_title
+    location = normalize_location(str(row.get("location") or "")) or "unknown"
+    if not role:
+        return None
+    return role, str(row.get("job_level") or "mid"), location
+
+
+def build_market_benchmark_rows(
+    rows: Sequence[dict[str, Any]],
+    minimum_segment_rows: int = MIN_BENCHMARK_SEGMENT_ROWS,
+) -> tuple[list[dict[str, Any]], int]:
+    """Replace noisy offer labels with partition-local market segment medians."""
+    if minimum_segment_rows < 1:
+        raise ValueError("minimum_segment_rows must be positive")
+    grouped_targets: dict[tuple[str, str, str], list[float]] = {}
+    for row in rows:
+        segment = _benchmark_segment(row)
+        if segment is None:
+            continue
+        grouped_targets.setdefault(segment, []).append(float(row["salary_midpoint"]))
+    medians = {
+        segment: float(median(targets))
+        for segment, targets in grouped_targets.items()
+        if len(targets) >= minimum_segment_rows
+    }
+    benchmark_rows = []
+    for row in rows:
+        segment = _benchmark_segment(row)
+        if segment is None or segment not in medians:
+            continue
+        benchmark_rows.append(
+            {
+                **row,
+                "salary_midpoint": medians[segment],
+                "benchmark_segment": "|".join(segment),
+            }
+        )
+    return benchmark_rows, len(medians)
 
 
 def _targets(rows: Sequence[dict[str, Any]]) -> Any:
@@ -283,6 +406,35 @@ def calibrate_quantile_offsets(rows: Sequence[dict[str, Any]]) -> tuple[float, f
     )
 
 
+def calibrate_interval_radius(
+    rows: Sequence[dict[str, Any]],
+) -> tuple[float, str, int]:
+    """Estimate a train-only conformal radius on the latest temporal partition."""
+    development_raw, calibration_raw, strategy = split_salary_rows(rows)
+    if not strategy.startswith("temporal:"):
+        raise ValueError("interval calibration requires a temporal training partition")
+    development, _ = build_market_benchmark_rows(development_raw)
+    calibration, _ = build_market_benchmark_rows(calibration_raw)
+    if len(development) < MIN_TRAINING_ROWS or len(calibration) < MIN_TEST_ROWS:
+        raise ValueError("interval calibration partitions do not meet minimum row counts")
+
+    import numpy as np
+
+    encoder = SalaryFeatureEncoder()
+    development_features = encoder.fit_transform(development)
+    calibration_features = encoder.transform(calibration)
+    predictor = SalaryPredictor()
+    predictor.fit_mean(development_features, _targets(development))
+    predictions = np.expm1(predictor.model_mean.predict(calibration_features))
+    absolute_residuals = np.abs(_targets(calibration) - predictions)
+    quantile = min(
+        1.0,
+        np.ceil((len(absolute_residuals) + 1) * INTERVAL_COVERAGE_TARGET) / len(absolute_residuals),
+    )
+    radius = float(np.quantile(absolute_residuals, quantile, method="higher"))
+    return radius, strategy, len(calibration)
+
+
 def _verify_artifacts(
     artifact_dir: Path,
     rows: list[dict[str, Any]],
@@ -299,33 +451,49 @@ def _verify_artifacts(
 
 
 def train_and_evaluate(
-    rows: Sequence[dict[str, Any]], output_dir: Path = Path("artifacts/salary")
+    rows: Sequence[dict[str, Any]],
+    output_dir: Path = Path("artifacts/salary"),
+    frozen_holdout: FrozenHoldout | None = None,
 ) -> dict[str, Any]:
-    data_readiness = assess_salary_data_readiness(rows)
     if len(rows) < MIN_TRAINING_ROWS + MIN_TEST_ROWS:
         return {
             "status": "skipped",
             "reason": "not_enough_real_salary_rows",
             "sample_size": len(rows),
             "minimum": MIN_TRAINING_ROWS + MIN_TEST_ROWS,
-            "data_readiness": data_readiness,
+            "data_readiness": assess_salary_data_readiness(rows),
         }
 
     import numpy as np
     from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, r2_score
 
-    train_rows, test_rows, split_strategy = split_salary_rows(rows)
-    if len(train_rows) < MIN_TRAINING_ROWS or len(test_rows) < MIN_TEST_ROWS:
+    source_revision = get_settings().source_revision
+    raw_train_rows, raw_test_rows, split_strategy = split_salary_rows(rows, frozen_holdout)
+    data_readiness = assess_salary_data_readiness(rows, segment_rows=raw_train_rows)
+    train_rows, train_segment_count = build_market_benchmark_rows(raw_train_rows)
+    test_rows, test_segment_count = build_market_benchmark_rows(raw_test_rows)
+    if (
+        len(train_rows) < MIN_TRAINING_ROWS
+        or len(test_rows) < MIN_TEST_ROWS
+        or test_segment_count < MIN_TEST_SEGMENTS
+    ):
         return {
             "status": "skipped",
-            "reason": "split_does_not_meet_minimums",
+            "reason": "benchmark_split_does_not_meet_minimums",
             "sample_size": len(rows),
             "train_size": len(train_rows),
             "test_size": len(test_rows),
+            "raw_train_size": len(raw_train_rows),
+            "raw_test_size": len(raw_test_rows),
+            "train_segment_count": train_segment_count,
+            "test_segment_count": test_segment_count,
             "data_readiness": data_readiness,
         }
 
     q25_offset, q75_offset = calibrate_quantile_offsets(train_rows)
+    interval_radius, interval_strategy, interval_calibration_size = calibrate_interval_radius(
+        raw_train_rows
+    )
     encoder = SalaryFeatureEncoder()
     train_features = encoder.fit_transform(train_rows)
     test_features = encoder.transform(test_rows)
@@ -334,7 +502,7 @@ def train_and_evaluate(
 
     predictor = SalaryPredictor()
     predictor.fit(train_features, target_train)
-    predictor.calibrate(q25_offset, q75_offset)
+    predictor.calibrate(q25_offset, q75_offset, interval_radius)
     predictions = predictor.predict_many(test_features)
     mean_predictions = predictions["salary_estimate"]
     diagnostics = evaluation_diagnostics(train_rows, test_rows, target_test, mean_predictions)
@@ -352,11 +520,20 @@ def train_and_evaluate(
         ),
         "q25_calibration_offset": q25_offset,
         "q75_calibration_offset": q75_offset,
-        "interval_calibration": f"train_only_{CALIBRATION_FOLDS}_fold_oof",
+        "interval_radius": interval_radius,
+        "interval_calibration": f"train_only_split_conformal:{interval_strategy}",
+        "interval_calibration_size": interval_calibration_size,
         "train_size": len(train_rows),
         "test_size": len(test_rows),
+        "raw_train_size": len(raw_train_rows),
+        "raw_test_size": len(raw_test_rows),
+        "train_segment_count": train_segment_count,
+        "test_segment_count": test_segment_count,
+        "minimum_segment_rows": MIN_BENCHMARK_SEGMENT_ROWS,
+        "holdout_cohort": frozen_holdout.cohort_id if frozen_holdout else "automatic_temporal",
+        "holdout_manifest_sha256": frozen_holdout.manifest_sha256 if frozen_holdout else "",
         "split_strategy": split_strategy,
-        "evaluation_unit": "individual_salary_midpoint",
+        "evaluation_unit": EVALUATION_UNIT,
         "train_period_start": str(min(_observation_date(row) for row in train_rows)),
         "train_period_end": str(max(_observation_date(row) for row in train_rows)),
         "test_period_start": str(min(_observation_date(row) for row in test_rows)),
@@ -380,6 +557,7 @@ def train_and_evaluate(
         json.dumps(
             {
                 "status": "candidate",
+                "source_revision": source_revision,
                 "metrics": metrics,
                 "evaluation_diagnostics": diagnostics,
                 "data_readiness": data_readiness,
@@ -394,6 +572,7 @@ def train_and_evaluate(
             json.dumps(
                 {
                     "status": "rejected",
+                    "source_revision": source_revision,
                     "failed_gates": failed_gates,
                     "metrics": metrics,
                     "evaluation_diagnostics": diagnostics,
@@ -425,6 +604,8 @@ def train_and_evaluate(
         json.dumps(
             {
                 "status": "published",
+                "source_revision": source_revision,
+                "failed_gates": [],
                 "metrics": metrics,
                 "evaluation_diagnostics": diagnostics,
                 "data_readiness": data_readiness,
@@ -444,4 +625,6 @@ def train_and_evaluate(
 
 
 async def train_from_database() -> dict[str, Any]:
-    return train_and_evaluate(await load_salary_rows())
+    manifest = get_settings().salary_holdout_manifest
+    frozen_holdout = load_frozen_holdout(Path(manifest)) if manifest else None
+    return train_and_evaluate(await load_salary_rows(), frozen_holdout=frozen_holdout)

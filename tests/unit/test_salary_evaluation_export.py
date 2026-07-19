@@ -17,8 +17,18 @@ def _metadata() -> dict[str, object]:
             "test_r2": -0.1,
             "baseline_mape": 0.4,
             "interval_coverage": 0.4,
+            "interval_radius": 3_000_000,
+            "interval_calibration": "train_only_split_conformal:temporal:2026-05-01",
+            "interval_calibration_size": 100,
             "train_size": 1000,
             "test_size": 200,
+            "raw_train_size": 1200,
+            "raw_test_size": 250,
+            "train_segment_count": 20,
+            "test_segment_count": 8,
+            "minimum_segment_rows": 3,
+            "holdout_cohort": "topcv-it-first-seen-2026-07-19",
+            "holdout_manifest_sha256": "d" * 64,
             "split_strategy": "temporal:2026-06-01",
             "evaluation_unit": "individual_salary_midpoint",
             "train_period_start": "2025-01-01",
@@ -48,6 +58,7 @@ def _metadata() -> dict[str, object]:
             "non_vnd_rows": 0,
             "qualified_segments": 1,
             "segment_candidates": 3,
+            "supported_segments": [{"role": "Backend"}],
             "underqualified_segments": [{"role": "Backend"}, {"role": "Frontend"}],
         },
     }
@@ -64,6 +75,7 @@ def test_build_evidence_compacts_and_hashes_candidate_metadata() -> None:
 
     assert evidence["metadata_sha256"] == hashlib.sha256(metadata_bytes).hexdigest()
     assert evidence["data_readiness"]["underqualified_segments"] == 2
+    assert evidence["data_readiness"]["supported_segments"] == 1
     assert "title_segments" not in evidence["evaluation_diagnostics"]
 
 

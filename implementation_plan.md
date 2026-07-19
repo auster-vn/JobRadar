@@ -1734,14 +1734,14 @@ MVP is **done** when ALL of the following pass:
 ### Phase 3 — ML Pipeline (Tuần 6-8)
 - [x] Feature engineering: encode level, location, skills
 - [x] XGBoost × 3 (mean + Q25 + Q75): train + MLflow log
-- [ ] ML evaluation CI gate (MAPE < 15%)
+- [x] ML evaluation CI gate (MAPE < 15%; current clean-room result 11.66%)
 - [x] pgvector: embed all jobs with all-MiniLM-L6-v2
 - [x] Job matching API: `/api/profile/matching-jobs`
 - [x] Skill gap analyzer
 
 ### Phase 4 — Multi-source + Full Application (Tuần 9-11)
 - [x] VietnamWorks scraper (first-party search pagination, 425 current jobs verified)
-- [x] TopCV scraper (paginated listing adapter, tested fail-closed on intermittent HTTP 403)
+- [x] TopCV scraper (broad IT route: 465 jobs, zero final errors; challenge path fails closed)
 - [x] User auth (JWT + httpOnly cookie)
 - [x] Job alerts (Celery Beat + Telegram Bot)
 - [x] CV upload + text extraction + embedding
@@ -1758,4 +1758,4 @@ MVP is **done** when ALL of the following pass:
 
 ---
 
-*Version 1.5 - STATUS SYNC | 2026-07-17 | Acceptance evidence in `docs/completion_audit.md`*
+*Version 1.6 - ML PUBLICATION READY | 2026-07-19 | Acceptance evidence in `docs/completion_audit.md`*

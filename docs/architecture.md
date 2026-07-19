@@ -18,14 +18,20 @@ PostgreSQL is the only durable application store. Redis is disposable and contai
 task queue state and bounded caches. Each external source lives behind an adapter,
 so policy or markup changes cannot leak into the core domain model.
 
-Licensed historical salary observations have their own table and provenance.
+Provenance-pinned salary observations have their own table and license metadata.
 The `salary_market_data` view unifies them with disclosed live salaries for
 benchmarking. Expired listings remain available to the time-bounded salary
 dataset without being exposed as active jobs. Repeated collection keeps one
 sample per source posting: a payload with no disclosed compensation cannot erase
 an earlier valid range, and the earliest observed posting timestamp is retained.
-A licensed historical row matching a live source ID is merged into the same
+A historical row matching a live source ID is merged into the same
 salary sample rather than duplicated across the two stores.
+
+Salary publication is release-bound. CI evaluates a manifest-pinned first-seen
+cohort; Release reconstructs an empty database from the pinned snapshots,
+retrains at the release Git SHA and embeds only a passing artifact in the ML
+image. A one-shot service installs it into an immutable revision directory.
+Production readiness requires the ML API to load that exact revision.
 
 ## Security boundaries
 

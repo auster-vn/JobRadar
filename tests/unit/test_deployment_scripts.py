@@ -273,6 +273,23 @@ def test_release_images_preserve_source_revision() -> None:
         assert "org.opencontainers.image.revision=$SOURCE_REVISION" in contents
 
 
+def test_release_builds_and_installs_a_revision_bound_salary_model() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    compose = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    production = (PROJECT_ROOT / "compose.production.yaml").read_text(encoding="utf-8")
+    deploy = (PROJECT_ROOT / "scripts/deploy_production.sh").read_text(encoding="utf-8")
+
+    assert "uv run python scripts/train_salary_release.py" in workflow
+    assert "name: salary-model-${{ env.RELEASE_SHA }}" in workflow
+    assert "path: ml/model_seed/current" in workflow
+    assert "needs: model" in workflow
+    assert "scripts/install_salary_model.py ml/model_seed/current" in compose
+    assert "condition: service_completed_successfully" in compose
+    assert 'REQUIRE_SALARY_MODEL: "true"' in production
+    assert "SALARY_MODEL_ARTIFACT_DIR" in production
+    assert "['model_available'] is True" in deploy
+
+
 def test_web_image_supports_apps_without_public_assets() -> None:
     dockerfile = (PROJECT_ROOT / "web" / "Dockerfile").read_text(encoding="utf-8")
 

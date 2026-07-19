@@ -41,7 +41,21 @@ services:
       CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
     restart: unless-stopped
 
+  salary-model:
+    environment:
+      APP_ENV: production
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY is required}
+      CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}
+      REQUIRE_SALARY_MODEL: "true"
+
   ml-api:
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        export SALARY_MODEL_ARTIFACT_DIR="/app/artifacts/salary/releases/$${SOURCE_REVISION}"
+        exec uvicorn ml.serving:app --host 0.0.0.0 --port 8002
     environment:
       APP_ENV: production
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}

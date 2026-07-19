@@ -11,7 +11,7 @@ stored as timezone-aware values. Salary amounts are monthly VND after ingestion.
 | `job_embeddings` | job | 384-dimensional semantic vector with model provenance |
 | `users` | account | Credentials and notification routing; private |
 | `user_profiles` | user | Skills, preferences and pgcrypto-encrypted CV text; private |
-| `salary_observations` | source record | Licensed historical salary samples; never shown as live jobs |
+| `salary_observations` | source record | Provenance-pinned salary samples; never shown as live jobs |
 | `job_alerts` | alert rule | User-owned match and delivery configuration |
 | `alert_events` | alert + job | Idempotent delivery status and error history |
 | `scrape_batches` | source run | Started/completed time and ingestion counters |
@@ -32,7 +32,7 @@ into a newer month. `is_active` is lifecycle state, not a deletion marker.
 
 `stg_itviec_jobs`, `stg_topcv_jobs` and `stg_vietnamworks_jobs` validate source
 records. `int_unified_jobs`,
-`salary_market_data` unions live disclosed salaries with licensed historical
+`salary_market_data` unions live disclosed salaries with provenance-pinned historical
 observations while retaining source and snapshot date. A matching source and
 source-record ID is represented once with live features and the earliest known
 date. `int_salary_normalized`

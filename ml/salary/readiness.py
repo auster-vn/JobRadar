@@ -10,6 +10,7 @@ MIN_DISTINCT_MONTHS = 6
 MIN_CANONICAL_TECHNICAL_ROWS = 1_000
 MIN_SEGMENT_ROWS = 30
 MIN_SEGMENT_MONTHS = 3
+MIN_SUPPORTED_SEGMENTS = 5
 MIN_FINAL_MONTH_ROWS = 200
 PRIMARY_CITIES = frozenset({"Ha Noi", "Ho Chi Minh", "Da Nang"})
 
@@ -29,7 +30,11 @@ def _month(value: object) -> str:
     return f"{observed_on.year:04d}-{observed_on.month:02d}"
 
 
-def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, Any]:
+def assess_salary_data_readiness(
+    rows: Sequence[dict[str, Any]],
+    *,
+    segment_rows: Sequence[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     months = {_month(row.get("source_snapshot_date")) for row in rows}
     source_keys = [str(row.get("source_key") or "") for row in rows]
     duplicate_source_keys = len(source_keys) - len(set(source_keys))
@@ -39,7 +44,7 @@ def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, An
     segments: dict[tuple[str, str, str], dict[str, Any]] = defaultdict(
         lambda: {"row_count": 0, "months": set()}
     )
-    for row in rows:
+    for row in rows if segment_rows is None else segment_rows:
         role = canonical_role(row.get("title_normalized"))
         if role is None:
             continue
@@ -63,6 +68,7 @@ def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, An
         }
         for (role, level, location), values in sorted(segments.items())
     ]
+    supported_segments = [segment for segment in segment_details if segment["ready"]]
     underqualified_segments = [segment for segment in segment_details if not segment["ready"]]
     final_month = max(months) if months else None
     final_month_rows = (
@@ -85,10 +91,10 @@ def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, An
             "passed": canonical_rows >= MIN_CANONICAL_TECHNICAL_ROWS,
         },
         {
-            "id": "underqualified_segments",
-            "actual": len(underqualified_segments),
-            "target": 0,
-            "passed": bool(segment_details) and not underqualified_segments,
+            "id": "supported_segments",
+            "actual": len(supported_segments),
+            "target": MIN_SUPPORTED_SEGMENTS,
+            "passed": len(supported_segments) >= MIN_SUPPORTED_SEGMENTS,
         },
         {
             "id": "final_month_rows",
@@ -120,6 +126,7 @@ def assess_salary_data_readiness(rows: Sequence[dict[str, Any]]) -> dict[str, An
         "non_vnd_rows": non_vnd_rows,
         "qualified_segments": len(segment_details) - len(underqualified_segments),
         "segment_candidates": len(segment_details),
+        "supported_segments": supported_segments,
         "underqualified_segments": underqualified_segments,
         "requirements": requirements,
     }

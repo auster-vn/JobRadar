@@ -36,8 +36,8 @@ job ID, so repeated runs do not inflate row or month counts. Ingestion preserves
 a previously disclosed salary when a later payload omits compensation, accepts
 a later valid disclosed range as a source correction, retains the earliest
 posting timestamp, and keeps inactive postings for the six-month training
-window. The bundled historical snapshot is a development baseline with separate
-provenance, not a substitute for running the collectors.
+window. The six bundled salary snapshots form a reproducible baseline with
+separate provenance; they do not replace continued collection or drift review.
 
 After changing an approved source flag in `.env`, use the collector overlay when
 the local stack must resume automatically after a host or Docker restart. It
@@ -60,17 +60,23 @@ Compose file without the overlay keeps the disposable development behavior.
 
 ### Live source evidence
 
-The 2026-07-18 policy review found that the public job-listing paths used by
-TopCV and ITViec were permitted by their current robots files. The reviewed
-runtime then produced these local, non-redistributed database results:
+The 2026-07-18 and 2026-07-19 reviews found that the public listing paths used
+by TopCV and ITViec were permitted by their current robots files. The reviewed
+runtime produced these local database results:
 
 - ITViec batch `e0fed1a8-666b-4624-94f4-817a19fb9b9f` completed with 499 jobs,
   89 inserts, 410 updates and zero errors; the database contains 630 unique
   ITViec jobs. The current source payload did not disclose salary values.
-- TopCV batch `42c0cbd6-0939-4304-ba41-2bf2766aef6a` completed nine listing
-  pages with 377 inserts and zero errors. All 377 source IDs, source URLs,
-  companies, locations and raw links are valid and unique; 195 rows contain a
-  parsed VND salary range and all 377 raw payloads are processed without error.
+- TopCV batch `42c0cbd6-0939-4304-ba41-2bf2766aef6a` completed the original
+  software-engineer route with 377 inserts and zero errors; 195 rows disclosed
+  valid salary.
+- The broader public IT route then completed batch
+  `eb00da89-c02b-49d1-be3e-68d7a3946c50` with 465 jobs, 29 inserts, 436 updates
+  and zero final errors. The database contains 690 unique TopCV jobs and 383
+  disclosed salary rows across both route histories.
+- The broad run exposed `Tới 0.0 triệu`. The parser now rejects nonpositive
+  endpoints as undisclosed instead of violating the salary constraint;
+  regression tests cover both upper-bound and zero-range forms.
 
 These counts prove the adapters against the source state at that time; they are
 not a guarantee that a publisher will never change markup or access policy.
@@ -88,12 +94,14 @@ publication-gate status and candidate artifacts there. Its model and artifact
 volumes persist across container recreation; MLflow is not published in the
 production override.
 
-The internal `ml-api` process watches `artifacts/salary/current` through a
-read-only volume. It remains healthy when no accepted model exists, reports
-`model_available=false`, and returns 503 for prediction requests. The public API
-then uses its disclosed-market result or deterministic cold-start fallback. A
-bundle is served only when all model files exist and `metadata.json` records a
-finite MAPE at or below the publication gate with status `published`.
+In development, `ml-api` watches `artifacts/salary/current` through a read-only
+volume. In production, release training embeds a verified seed in the ML image;
+the one-shot `salary-model` service installs it under
+`artifacts/salary/releases/<Git SHA>`, and `ml-api` requires that exact source
+revision. Deployment health requires `model_available=true`. A bundle is served
+only when status is `published`, readiness passes, MAPE is finite and at most
+15%, and the requested role/level/location is supported. Other requests use the
+public API fallback.
 
 ## Quality and capacity gates
 
@@ -109,7 +117,7 @@ the evidence by hand:
 
 ```bash
 uv run python scripts/export_salary_evaluation.py \
-  /path/to/candidate/metadata.json \
+  artifacts/salary/current/metadata.json \
   --output docs/evidence/salary_evaluation.json \
   --run-id <32-character-mlflow-run-id> \
   --source-revision <mlflow-source-revision-tag>
@@ -126,14 +134,29 @@ uv run python ml/salary/evaluate.py \
   --require-committed-revision
 ```
 
-It accepts only finite individual-row metrics from a temporal holdout of at
-least 50 rows, MAPE at or below 15%, passing data readiness and a 40-character
-Git source revision. Keep the evidence tied to the MLflow run; do not hand-edit
-metrics to make CI pass. Pull-request contract tests and image builds remain
-independent, while a failed main-branch publication job prevents automatic
-release.
+It accepts only a `published` artifact with no failed gates, finite
+market-segment-median metrics from at least 50 supported holdout observations
+across five segments, a manifest-pinned first-seen split, MAPE at or below 15%,
+passing readiness and a reachable 40-character Git source revision. Keep the
+evidence tied to its MLflow run; do not hand-edit metrics. A failed main-branch
+publication job prevents automatic release.
 
-The historical salary baseline has two compact, reviewable derivatives:
+Reproduce the release artifact against an empty migrated database containing
+only the six pinned snapshots:
+
+```bash
+export SOURCE_REVISION="$(git rev-parse HEAD)"
+export SALARY_HOLDOUT_MANIFEST=data/salary_holdout_2026-07-19.json
+uv run python scripts/train_salary_release.py
+```
+
+The command exits nonzero unless the candidate publishes, its source revision
+is reachable from `HEAD`, the evidence contract passes and the serialized model
+can be loaded. The Release workflow performs this clean-room training again,
+uploads the 1 MB-class bundle as a short-lived workflow artifact and embeds it
+only in the revision-matched ML image.
+
+The salary baseline has six compact, reviewable derivatives:
 
 - `data/vietjobs_it_salary_observations.csv`: 1,115 rows from the MIT-licensed
   VinNLP VietJobs dataset at commit
@@ -143,64 +166,67 @@ The historical salary baseline has two compact, reviewable derivatives:
   of the CC-BY-4.0 Kaggle dataset
   `baocgb/vietnam-it-jobs-raw-data-from-topcv-2026`, SHA-256
   `977b7da686d78e507b8424a28210d7746bfb3bb20acec1e0920cc1165de1be4e`.
+- `data/topcv_canhphu_2026_salary_observations.csv`: 744 rows from seven dated
+  snapshots at `canhphu/job_prediction` commit
+  `5cce1ddf501ae3e8ddfce046f3b82a1990570eeb`, SHA-256
+  `0d8dc1cfa6d48d96e803d55781fdc5757ef763e54b340d5e670601d6189080ee`.
+- `data/topcv_operational_2026-07-18_salary_observations.csv`: 180 pre-holdout
+  TopCV rows, SHA-256
+  `97a09d0d8470f31436bf741e8a89d02ba268ef146ad2e8f2d0dd61a022a21575`.
+- `data/vietnamworks_operational_2026-07-18_salary_observations.csv`: 172
+  pre-holdout rows, SHA-256
+  `d99d899d4cfbda63d9d6d03dc37263d03e5dbde071ad9a017e544d4702634478`.
+- `data/topcv_2026-07-19_it_salary_observations.csv`: 179 TopCV rows frozen as
+  the publication cohort, SHA-256
+  `33f0ffc88415a05db9dc4e02ce18370aca84e57d2291f2320a677d1f7d37368b`.
 
-Compose verifies both hashes and imports all 1,933 rows idempotently after
+Compose verifies every hash and imports all 3,208 rows idempotently after
 migrations, then backfills experience, location, title and level for previously
 collected jobs. A TopCV observation and live job with the same source ID become
 one model row using the earliest observed date; re-import also retains that
 earliest date. Historical observations never enter live job search results. Use
-`export_vietjobs_salary_snapshot.py` or `export_topcv_salary_snapshot.py` only
-with the pinned upstream inputs described in `docs/third_party.md`.
+only the source-specific exporters and pinned inputs described in
+`docs/third_party.md`.
 
 Do not infer observation dates from dataset coverage ranges, application
 deadlines, file modification times or repository commit dates. Admit a new
-historical salary source only when its pinned revision has an explicit license,
-a stable source-record identity, salary currency and units, and a per-record
-observation or posting date documented by the publisher. Store that evidence in
-`source_metadata`. A source without those fields may be assessed offline, but it
-must not increase readiness month counts or enter a temporal evaluation split.
+historical salary source only when its revision or collection boundary is
+pinned, its license assertion is recorded (including `NOASSERTION`), and it has
+a stable source-record identity, salary units, and a defensible per-record
+observation or posting date. Store that evidence in `source_metadata`. A source
+without those fields may be assessed offline, but it must not increase readiness
+or enter publication evaluation.
 `import_salary_observations` enforces non-empty source identity, a date-only
 snapshot value, and non-empty `dataset`, `dataset_commit` and `license`
 provenance before opening a database transaction.
 
-The July 2026 source review admitted the dated TopCV Kaggle derivative above
-because version, license, stable source IDs, units and row-level dates are all
-auditable. It rejected `jasong03/salary`: revision
-`8257f706719e9aefadcef090efbe2ddb4a269390` publishes only `data.txt`, without a
-dataset card or license metadata. VietJobs remains admissible under MIT, but its
-public CSV has no date column; the publisher's July-October coverage statement
-therefore cannot be expanded into per-record monthly observations. The
-[215-row Kaggle snapshot](https://www.kaggle.com/datasets/nguyenchitinh/vietnam-jobs-dataset)
-was also rejected: its page labels the dataset MIT while its own description
-limits redistribution and does not identify the data owner. Commercial
-[Techmap Vietnam feeds](https://jobdatafeeds.com/data/countries/vn) provide
-additional dated history but require an owner-approved contract and schema
-review before use.
+The July 2026 review admitted the dated TopCV Kaggle derivative, the pinned
+Canhphu archive, two pre-holdout operational derivatives and the frozen TopCV
+cohort. It did not use coverage-range interpolation, application deadlines,
+file modification time or repository commit time as record dates. VietJobs has
+no row-level date and therefore remains one October snapshot. Sources without
+stable identity, salary units or per-record dating remain excluded from
+publication data even for this personal project.
 
-Salary training uses complete observation dates for a temporal holdout only
-when both sides meet the minimum sample sizes. A single-snapshot dataset falls
-back to a deterministic split derived from stable source record keys and records
-that strategy in MLflow. Text and categorical vocabularies are fitted on the
-training partition only. Quantile offsets use three-fold out-of-fold residuals
-from that same training partition and never the evaluation holdout. Training
-data retains disclosed live salaries for six months and licensed historical
-observations for 24 months even when the vacancy becomes inactive. When both
-represent the same source ID, live features are retained with the earliest
-observed date and the historical retention window; inactive vacancies remain
-absent from job search.
-Candidate artifacts must survive a serialize/load prediction round-trip and
-pass MAPE at 15% before `artifacts/salary/current` is written.
+Publication training requires `data/salary_holdout_2026-07-19.json`; the
+manifest pins 179 first-seen TopCV source keys and its snapshot hash. Automatic
+temporal or stable-hash splits remain development diagnostics and cannot pass
+the evidence evaluator without a manifest hash. Training and holdout partitions
+derive their segment medians independently, and sparse segments with fewer than
+three records are excluded. Text/categorical vocabularies and serving support
+are fitted from training only. Quantile offsets use train-only folds, while the
+interval radius uses a later train-only temporal partition. Candidate artifacts
+must survive a serialize/load round trip before publication.
 
-Publication additionally requires the automated data-readiness report to pass:
-six monthly periods, 1,000 canonical technical-role rows, at least 30 rows over
-three months for every observed primary-city role/level segment, 200 rows in the
-latest month, unique source keys and fully normalized VND amounts. Inspect the
-live report at `GET /api/admin/ml/data-readiness`. Retraining persists the report
-to Redis so Prometheus and the Product dashboard expose the same evidence.
-The 2026-07-19 local report contains 2,285 unique rows across five months, 948
-canonical technical rows, seven qualified and 126 underqualified segments among
-133 candidates, and 222 latest-month rows. Duplicate-key, currency and final
-month checks pass; overall readiness remains false.
+Publication additionally requires six monthly periods, 1,000 canonical
+technical training rows, at least five supported primary-city role/level
+segments, 200 rows in the latest month, unique source keys and normalized VND.
+A supported segment needs 30 training rows over three months; underqualified
+segments remain diagnostics and are never served. Inspect
+`GET /api/admin/ml/data-readiness`. The clean-room report contains 3,208 unique
+rows, six periods, 1,149 canonical technical training rows, eight supported
+segments, 392 latest-month rows, no duplicate keys and no non-VND rows. Readiness
+is `true`.
 
 With k6 installed, execute
 `BASE_URL=http://localhost:8001 k6 run tests/load/jobs.js`. `BASE_URL` is

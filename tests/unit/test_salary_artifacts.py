@@ -11,6 +11,8 @@ from ml.features.salary_features import SalaryFeatureEncoder
 from ml.salary.model import SalaryPredictor
 from ml.serving import PublishedSalaryModel
 
+SUPPORTED_SEGMENTS = [{"role": "Backend Developer", "level": "senior", "location": "Ha Noi"}]
+
 
 def _training_rows() -> list[dict[str, Any]]:
     return [
@@ -70,7 +72,7 @@ def test_salary_artifacts_round_trip_without_test_vocabulary_leakage(tmp_path: A
     target = np.asarray([12_000_000 + index * 750_000 for index in range(len(rows))])
     predictor = SalaryPredictor()
     predictor.fit(features, target)
-    predictor.calibrate(-250_000, 500_000)
+    predictor.calibrate(-250_000, 500_000, 1_000_000)
     expected = predictor.predict_many(encoder.transform(unseen))
 
     predictor.save(tmp_path)
@@ -100,7 +102,10 @@ def test_serving_loads_only_a_published_model_below_the_gate(tmp_path: Any) -> N
             {
                 "status": "rejected",
                 "metrics": {"test_mape": 0.10},
-                "data_readiness": {"ready": True},
+                "data_readiness": {
+                    "ready": True,
+                    "supported_segments": SUPPORTED_SEGMENTS,
+                },
             }
         ),
         encoding="utf-8",
@@ -113,7 +118,10 @@ def test_serving_loads_only_a_published_model_below_the_gate(tmp_path: Any) -> N
             {
                 "status": "published",
                 "metrics": {"test_mape": float("nan")},
-                "data_readiness": {"ready": True},
+                "data_readiness": {
+                    "ready": True,
+                    "supported_segments": SUPPORTED_SEGMENTS,
+                },
             }
         ),
         encoding="utf-8",
@@ -130,8 +138,12 @@ def test_serving_loads_only_a_published_model_below_the_gate(tmp_path: Any) -> N
         json.dumps(
             {
                 "status": "published",
+                "source_revision": "a" * 40,
                 "metrics": {"test_mape": 0.10},
-                "data_readiness": {"ready": True},
+                "data_readiness": {
+                    "ready": True,
+                    "supported_segments": SUPPORTED_SEGMENTS,
+                },
             }
         ),
         encoding="utf-8",
@@ -147,6 +159,18 @@ def test_serving_loads_only_a_published_model_below_the_gate(tmp_path: Any) -> N
 
     assert result["currency"] == "VND"
     assert result["salary_p25"] <= result["salary_p75"]
+    assert PublishedSalaryModel(
+        tmp_path,
+        expected_source_revision="a" * 40,
+    ).available
+    assert not PublishedSalaryModel(
+        tmp_path,
+        expected_source_revision="b" * 40,
+    ).available
+
+    unsupported = request.model_copy(update={"location": "Da Nang"})
+    with pytest.raises(RuntimeError, match="does not support"):
+        serving_model.predict(unsupported)
 
 
 def test_quantile_only_fit_does_not_require_mean_model() -> None:

@@ -1,11 +1,20 @@
+import hashlib
 import importlib
+import json
 from datetime import date, timedelta
+from pathlib import Path
+
+import pytest
 
 from ml.salary.training import (
+    EVALUATION_UNIT,
     MIN_TEST_ROWS,
     MIN_TRAINING_ROWS,
     SALARY_ROWS_SQL,
+    FrozenHoldout,
+    build_market_benchmark_rows,
     evaluation_diagnostics,
+    load_frozen_holdout,
     publication_gate_failures,
     split_salary_rows,
     train_and_evaluate,
@@ -27,6 +36,40 @@ def test_publication_requires_accuracy_and_data_readiness() -> None:
     assert publication_gate_failures(0.20, {"ready": True}) == ["mape"]
     assert publication_gate_failures(0.10, {"ready": False}) == ["data_readiness"]
     assert publication_gate_failures(0.20, {"ready": False}) == ["mape", "data_readiness"]
+
+
+def test_market_benchmark_targets_use_partition_local_segment_medians() -> None:
+    rows = [
+        {
+            "source_key": f"source:{index}",
+            "title_normalized": "Backend Developer",
+            "job_level": "mid",
+            "location": "Ha Noi",
+            "salary_midpoint": salary,
+        }
+        for index, salary in enumerate((10_000_000, 20_000_000, 60_000_000))
+    ]
+
+    benchmark_rows, segment_count = build_market_benchmark_rows(rows)
+
+    assert EVALUATION_UNIT == "market_segment_median"
+    assert segment_count == 1
+    assert {row["salary_midpoint"] for row in benchmark_rows} == {20_000_000.0}
+
+
+def test_market_benchmark_excludes_sparse_segments() -> None:
+    rows = [
+        {
+            "source_key": f"source:{index}",
+            "title_normalized": "Backend Developer",
+            "job_level": "mid",
+            "location": "Ha Noi",
+            "salary_midpoint": 20_000_000,
+        }
+        for index in range(2)
+    ]
+
+    assert build_market_benchmark_rows(rows) == ([], 0)
 
 
 def test_live_salary_query_keeps_one_observation_per_job() -> None:
@@ -76,6 +119,58 @@ def test_split_falls_back_to_stable_source_hash_for_single_snapshot() -> None:
     assert set(row["source_key"] for row in first[0]).isdisjoint(
         row["source_key"] for row in first[1]
     )
+
+
+def test_frozen_holdout_split_uses_only_manifest_source_keys() -> None:
+    rows = [_row(index, date(2026, 7, 1)) for index in range(300)]
+    holdout_keys = frozenset(f"source:{index}" for index in range(250, 300))
+    holdout = FrozenHoldout(
+        cohort_id="cohort-1",
+        first_seen_at="2026-07-19T04:36:28+00:00",
+        source_keys=holdout_keys,
+        manifest_sha256="a" * 64,
+        snapshot_sha256="b" * 64,
+    )
+
+    train, test, strategy = split_salary_rows(rows, holdout)
+
+    assert len(train) == 250
+    assert len(test) == 50
+    assert {str(row["source_key"]) for row in test} == holdout_keys
+    assert strategy == "temporal:first_seen_at=2026-07-19T04:36:28+00:00"
+
+    with pytest.raises(ValueError, match="missing 1 source keys"):
+        split_salary_rows(rows[:-1], holdout)
+
+
+def test_frozen_holdout_loader_verifies_snapshot_contract(tmp_path: Path) -> None:
+    snapshot = tmp_path / "snapshot.csv"
+    snapshot.write_bytes(b"source,source_record_id\ntopcv,1\n")
+    snapshot_sha256 = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+    manifest = tmp_path / "holdout.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "cohort_id": "cohort-1",
+                "first_seen_at": "2026-07-19T04:36:28+00:00",
+                "snapshot": snapshot.name,
+                "snapshot_sha256": snapshot_sha256,
+                "source_key_count": 1,
+                "source_keys": ["topcv:1"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    holdout = load_frozen_holdout(manifest)
+
+    assert holdout.source_keys == frozenset({"topcv:1"})
+    assert holdout.snapshot_sha256 == snapshot_sha256
+
+    snapshot.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="SHA256"):
+        load_frozen_holdout(manifest)
 
 
 def test_evaluation_diagnostics_reports_unseen_features_and_title_segments() -> None:

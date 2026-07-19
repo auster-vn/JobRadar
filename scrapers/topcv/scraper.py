@@ -6,7 +6,7 @@ from scrapers.common.http_client import EthicalHttpClient
 from scrapers.common.validator import RawJobValidator
 from scrapers.topcv.parser import listing_page_count, parse_listing
 
-LISTING_URL = "https://www.topcv.vn/tim-viec-lam-software-engineer"
+LISTING_URL = "https://www.topcv.vn/tim-viec-lam-cong-nghe-thong-tin"
 JOB_CARD_SELECTOR = ".job-item-search-result[data-job-id]"
 MAX_PAGES_PER_RUN = 10
 

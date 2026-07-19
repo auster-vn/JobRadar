@@ -37,7 +37,7 @@ wait_for_internal_health() {
   local attempt
   for attempt in $(seq 1 60); do
     if compose exec -T api python -c \
-      "import urllib.request; [urllib.request.urlopen(url, timeout=3) for url in ('http://localhost:8000/health/ready', 'http://prometheus:9090/-/ready', 'http://grafana:3000/api/health')]" \
+      "import json, urllib.request; [urllib.request.urlopen(url, timeout=3) for url in ('http://localhost:8000/health/ready', 'http://prometheus:9090/-/ready', 'http://grafana:3000/api/health')]; assert json.load(urllib.request.urlopen('http://ml-api:8002/health', timeout=3))['model_available'] is True" \
       >/dev/null 2>&1 \
       && compose exec -T web node -e \
         "fetch('http://localhost:3000').then(r => { if (!r.ok) process.exit(1) })" \

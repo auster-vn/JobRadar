@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
+from api.services.canhphu_topcv_salary_import import SOURCE as CANHPHU_TOPCV_SOURCE
 from api.services.salary_observation_import import import_salary_observations
 from api.services.topcv_salary_import import SOURCE as TOPCV_SOURCE
 from api.services.vietjobs_import import SOURCE as VIETJOBS_SOURCE
@@ -23,6 +24,21 @@ class SnapshotContract:
 
 
 SNAPSHOT_CONTRACTS = {
+    "topcv_operational_2026-07-18_salary_observations.csv": SnapshotContract(
+        source=TOPCV_SOURCE,
+        rows=180,
+        sha256="97a09d0d8470f31436bf741e8a89d02ba268ef146ad2e8f2d0dd61a022a21575",
+    ),
+    "topcv_2026-07-19_it_salary_observations.csv": SnapshotContract(
+        source=TOPCV_SOURCE,
+        rows=179,
+        sha256="33f0ffc88415a05db9dc4e02ce18370aca84e57d2291f2320a677d1f7d37368b",
+    ),
+    "topcv_canhphu_2026_salary_observations.csv": SnapshotContract(
+        source=CANHPHU_TOPCV_SOURCE,
+        rows=744,
+        sha256="0d8dc1cfa6d48d96e803d55781fdc5757ef763e54b340d5e670601d6189080ee",
+    ),
     "topcv_2026_it_salary_observations.csv": SnapshotContract(
         source=TOPCV_SOURCE,
         rows=818,
@@ -32,6 +48,11 @@ SNAPSHOT_CONTRACTS = {
         source=VIETJOBS_SOURCE,
         rows=1115,
         sha256="f823fdb009c69ff9a2e8a367497936fcd7001adcfa60bc4dc0784d6c55ff357c",
+    ),
+    "vietnamworks_operational_2026-07-18_salary_observations.csv": SnapshotContract(
+        source="vietnamworks",
+        rows=172,
+        sha256="d99d899d4cfbda63d9d6d03dc37263d03e5dbde071ad9a017e544d4702634478",
     ),
 }
 

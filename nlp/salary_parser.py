@@ -23,6 +23,10 @@ class SalaryRange:
     source_currency: str = "VND"
 
     def __post_init__(self) -> None:
+        if self.min_vnd is not None and self.min_vnd <= 0:
+            raise ValueError("minimum salary must be positive")
+        if self.max_vnd is not None and self.max_vnd <= 0:
+            raise ValueError("maximum salary must be positive")
         if self.min_vnd is not None and self.max_vnd is not None and self.min_vnd > self.max_vnd:
             raise ValueError("minimum salary cannot exceed maximum salary")
 
@@ -49,6 +53,18 @@ def _vnd(value: str, unit: str | None) -> int:
     return int(amount)
 
 
+def _range(
+    minimum: int | None,
+    maximum: int | None,
+    *,
+    currency: str = "VND",
+) -> SalaryRange:
+    values = (value for value in (minimum, maximum) if value is not None)
+    if any(value <= 0 for value in values):
+        return SalaryRange(None, None, True, currency)
+    return SalaryRange(minimum, maximum, False, currency)
+
+
 def parse_salary(text: str | None) -> SalaryRange:
     if not text or not text.strip():
         return SalaryRange(None, None, True)
@@ -69,7 +85,7 @@ def parse_salary(text: str | None) -> SalaryRange:
     if usd_range and has_usd_marker:
         low = int(_number(usd_range.group(1)) * USD_TO_VND)
         high = int(_number(usd_range.group(2)) * USD_TO_VND)
-        return SalaryRange(period(min(low, high)), period(max(low, high)), False, "USD")
+        return _range(period(min(low, high)), period(max(low, high)), currency="USD")
 
     vnd_range = re.search(
         r"([\d.,]+)\s*(tr|triệu|trieu|m|million)?\s*[-–—]\s*([\d.,]+)\s*(tr|triệu|trieu|m|million|vnd)",
@@ -78,7 +94,7 @@ def parse_salary(text: str | None) -> SalaryRange:
     if vnd_range:
         low = _vnd(vnd_range.group(1), vnd_range.group(2) or vnd_range.group(4))
         high = _vnd(vnd_range.group(3), vnd_range.group(4))
-        return SalaryRange(period(min(low, high)), period(max(low, high)), False)
+        return _range(period(min(low, high)), period(max(low, high)))
 
     upper = re.search(
         r"(?:lên đến|tới|up to|upto|tối đa|max)\s*:?\s*\$?\s*"
@@ -92,7 +108,7 @@ def parse_salary(text: str | None) -> SalaryRange:
             if currency == "USD"
             else _vnd(upper.group(1), upper.group(2))
         )
-        return SalaryRange(None, period(value), False, currency)
+        return _range(None, period(value), currency=currency)
 
     lower = re.search(
         r"(?:từ|from|minimum|min)\s*:?\s*\$?\s*([\d.,]+)\s*(tr|triệu|trieu|m|million|usd)?",
@@ -105,6 +121,6 @@ def parse_salary(text: str | None) -> SalaryRange:
             if currency == "USD"
             else _vnd(lower.group(1), lower.group(2))
         )
-        return SalaryRange(period(value), None, False, currency)
+        return _range(period(value), None, currency=currency)
 
     return SalaryRange(None, None, True)

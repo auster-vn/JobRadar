@@ -48,6 +48,10 @@ jobs:
           uv run python scripts/import_salary_snapshot.py
           data/vietjobs_it_salary_observations.csv
           data/topcv_2026_it_salary_observations.csv
+          data/topcv_canhphu_2026_salary_observations.csv
+          data/topcv_2026-07-19_it_salary_observations.csv
+          data/topcv_operational_2026-07-18_salary_observations.csv
+          data/vietnamworks_operational_2026-07-18_salary_observations.csv
       - run: uv run python scripts/backfill_job_experience.py
       - run: uv run python scripts/backfill_job_locations.py
       - run: uv run python scripts/backfill_job_titles.py
@@ -115,6 +119,10 @@ jobs:
           uv run python scripts/import_salary_snapshot.py
           data/vietjobs_it_salary_observations.csv
           data/topcv_2026_it_salary_observations.csv
+          data/topcv_canhphu_2026_salary_observations.csv
+          data/topcv_2026-07-19_it_salary_observations.csv
+          data/topcv_operational_2026-07-18_salary_observations.csv
+          data/vietnamworks_operational_2026-07-18_salary_observations.csv
       - run: uv run python scripts/backfill_job_locations.py
       - name: Start API
         run: .venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000 > /tmp/jobradar-api.log 2>&1 &

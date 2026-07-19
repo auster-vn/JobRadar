@@ -8,7 +8,13 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
-from ml.salary.training import MAPE_PUBLICATION_LIMIT, MIN_TEST_ROWS
+from ml.salary.training import (
+    EVALUATION_UNIT,
+    MAPE_PUBLICATION_LIMIT,
+    MIN_BENCHMARK_SEGMENT_ROWS,
+    MIN_TEST_ROWS,
+    MIN_TEST_SEGMENTS,
+)
 
 PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -50,6 +56,12 @@ def evaluation_failures(
     metrics: dict[str, Any] = raw_metrics
     failures: list[str] = []
 
+    if payload.get("status") != "published":
+        failures.append("status must be published")
+    failed_gates = payload.get("failed_gates")
+    if failed_gates != []:
+        failures.append("failed_gates must be empty")
+
     numeric: dict[str, float] = {}
     for key in ("test_mape", "test_mae", "test_r2"):
         try:
@@ -78,11 +90,28 @@ def evaluation_failures(
     elif test_size < MIN_TEST_ROWS:
         failures.append(f"test_size must be at least {MIN_TEST_ROWS}")
 
-    if metrics.get("evaluation_unit") != "individual_salary_midpoint":
-        failures.append("evaluation_unit must be individual_salary_midpoint")
+    test_segment_count = metrics.get("test_segment_count")
+    if isinstance(test_segment_count, bool) or not isinstance(test_segment_count, int):
+        failures.append("test_segment_count must be an integer")
+    elif test_segment_count < MIN_TEST_SEGMENTS:
+        failures.append(f"test_segment_count must be at least {MIN_TEST_SEGMENTS}")
+    if metrics.get("minimum_segment_rows") != MIN_BENCHMARK_SEGMENT_ROWS:
+        failures.append(f"minimum_segment_rows must be {MIN_BENCHMARK_SEGMENT_ROWS}")
+
+    if metrics.get("evaluation_unit") != EVALUATION_UNIT:
+        failures.append(f"evaluation_unit must be {EVALUATION_UNIT}")
     split_strategy = metrics.get("split_strategy")
     if not isinstance(split_strategy, str) or not split_strategy.startswith("temporal:"):
         failures.append("split_strategy must be a temporal holdout")
+    holdout_cohort = metrics.get("holdout_cohort")
+    if not isinstance(holdout_cohort, str) or not holdout_cohort:
+        failures.append("holdout_cohort must be non-empty")
+    manifest_sha256 = metrics.get("holdout_manifest_sha256")
+    if (
+        not isinstance(manifest_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", manifest_sha256) is None
+    ):
+        failures.append("holdout_manifest_sha256 must be a 64-character SHA256")
 
     if require_data_ready:
         readiness = payload.get("data_readiness")

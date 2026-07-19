@@ -157,16 +157,19 @@ async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) 
         session.add(batch)
         await session.flush()
         batch_id = batch.id
+    jobs: list[RawJobValidator] = []
+    new_count = 0
+    processed_count = 0
     try:
         jobs = await ITViecScraper().scrape(
             pages,
             start_page,
             detail_limit=detail_limit,
         )
-        new_count = 0
         for item in jobs:
             _, created = await _upsert_job(item)
             new_count += int(created)
+            processed_count += 1
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -185,7 +188,14 @@ async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) 
             await session.execute(
                 update(ScrapeBatch)
                 .where(ScrapeBatch.id == batch_id)
-                .values(completed_at=datetime.now(UTC), errors=1, status="failed")
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=1,
+                    status="failed",
+                )
             )
         raise
 
@@ -199,12 +209,15 @@ async def ingest_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
         session.add(batch)
         await session.flush()
         batch_id = batch.id
+    jobs: list[RawJobValidator] = []
+    new_count = 0
+    processed_count = 0
     try:
         jobs = await VietnamWorksScraper().scrape(max_pages=max_pages)
-        new_count = 0
         for item in jobs:
             _, created = await _upsert_job(item)
             new_count += int(created)
+            processed_count += 1
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -223,7 +236,14 @@ async def ingest_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
             await session.execute(
                 update(ScrapeBatch)
                 .where(ScrapeBatch.id == batch_id)
-                .values(completed_at=datetime.now(UTC), errors=1, status="failed")
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=1,
+                    status="failed",
+                )
             )
         raise
 
@@ -237,12 +257,15 @@ async def ingest_topcv(max_pages: int = 10) -> dict[str, Any]:
         session.add(batch)
         await session.flush()
         batch_id = batch.id
+    jobs: list[RawJobValidator] = []
+    new_count = 0
+    processed_count = 0
     try:
         jobs = await TopCVScraper().scrape(max_pages=max_pages)
-        new_count = 0
         for item in jobs:
             _, created = await _upsert_job(item)
             new_count += int(created)
+            processed_count += 1
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -261,7 +284,14 @@ async def ingest_topcv(max_pages: int = 10) -> dict[str, Any]:
             await session.execute(
                 update(ScrapeBatch)
                 .where(ScrapeBatch.id == batch_id)
-                .values(completed_at=datetime.now(UTC), errors=1, status="failed")
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=1,
+                    status="failed",
+                )
             )
         raise
 
