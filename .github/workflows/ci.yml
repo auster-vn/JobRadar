@@ -236,6 +236,7 @@ jobs:
             (.services.web.ports[0].host_ip == "127.0.0.1") and
             (.services.web.ports[0].published == "3000") and
             (.services.web.ports[0].target == 3000) and
+            (.services.backup.user == "1000:1000") and
             ([.services[] | .logging.driver] | all(. == "local"))
           ' "$config"
       - run: python scripts/validate_monitoring.py

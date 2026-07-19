@@ -117,8 +117,17 @@ jobs:
           # Paths expand on the runner after the validation step restricts their characters.
           # shellcheck disable=SC2029
           ssh "${{ steps.release.outputs.target }}" \
-            "mkdir -p '$release_dir' && tar -xzf - -C '$release_dir'" \
+            "mkdir -p '$release_dir' && tar -xzf - -C '$release_dir' && \
+            find '$release_dir/infra' -type d -exec chmod 755 {} + && \
+            find '$release_dir/infra' -type f -exec chmod 644 {} + && \
+            chmod 644 '$release_dir/scripts/backup_loop.sh'" \
             < /tmp/jobradar-release.tgz
+          # shellcheck disable=SC2029
+          read -r backup_uid backup_gid < <(
+            ssh "${{ steps.release.outputs.target }}" 'printf "%s %s\n" "$(id -u)" "$(id -g)"'
+          )
+          [[ "$backup_uid" =~ ^[1-9][0-9]*$ ]]
+          [[ "$backup_gid" =~ ^[1-9][0-9]*$ ]]
           # shellcheck disable=SC2029
           {
             printf 'BACKEND_IMAGE=%s-backend:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
@@ -141,6 +150,8 @@ jobs:
             printf 'ENABLE_ITVIEC_SCRAPER=%s\n' "$ENABLE_ITVIEC_SCRAPER"
             printf 'ENABLE_TOPCV_SCRAPER=%s\n' "$ENABLE_TOPCV_SCRAPER"
             printf 'ENABLE_VIETNAMWORKS_SCRAPER=%s\n' "$ENABLE_VIETNAMWORKS_SCRAPER"
+            printf 'BACKUP_UID=%s\n' "$backup_uid"
+            printf 'BACKUP_GID=%s\n' "$backup_gid"
           } | ssh "${{ steps.release.outputs.target }}" \
             "umask 077; cat > '$release_dir/.env'"
 

@@ -104,6 +104,7 @@ jobs:
           # remain readable by the non-root Prometheus, Grafana, and Caddy users.
           find "$release_dir/infra" -type d -exec chmod 755 {} +
           find "$release_dir/infra" -type f -exec chmod 644 {} +
+          chmod 644 "$release_dir/scripts/backup_loop.sh"
           {
             printf 'BACKEND_IMAGE=%s-backend:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
             printf 'ML_IMAGE=%s-ml:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
@@ -126,6 +127,8 @@ jobs:
             printf 'ENABLE_TOPCV_SCRAPER=%s\n' "$ENABLE_TOPCV_SCRAPER"
             printf 'ENABLE_VIETNAMWORKS_SCRAPER=%s\n' "$ENABLE_VIETNAMWORKS_SCRAPER"
             printf 'BACKUP_DIR=%s/backups\n' "$DEPLOY_ROOT"
+            printf 'BACKUP_UID=%s\n' "$(id -u)"
+            printf 'BACKUP_GID=%s\n' "$(id -g)"
           } > "$release_dir/.env"
           chmod 600 "$release_dir/.env"
 

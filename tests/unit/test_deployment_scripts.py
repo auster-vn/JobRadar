@@ -538,7 +538,11 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     assert "profiles: [public-ingress]" in overlay
     assert "driver: local" in overlay
     assert 'max-size: "10m"' in overlay
+    assert 'user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"' in (
+        PROJECT_ROOT / "compose.production.yaml"
+    ).read_text(encoding="utf-8")
     assert "Validate private self-hosted ingress" in ci
+    assert '(.services.backup.user == "1000:1000")' in ci
     assert '(.services | has("caddy") | not)' in ci
     assert 'all(. == "local")' in ci
     assert "jobradar-production" in actionlint
@@ -549,7 +553,10 @@ def test_deploy_keeps_runtime_config_readable_with_a_restrictive_runner_umask() 
 
     assert 'find "$release_dir/infra" -type d -exec chmod 755 {} +' in workflow
     assert 'find "$release_dir/infra" -type f -exec chmod 644 {} +' in workflow
+    assert 'chmod 644 "$release_dir/scripts/backup_loop.sh"' in workflow
     assert 'chmod 600 "$release_dir/.env"' in workflow
+    assert "printf 'BACKUP_UID=%s\\n' \"$(id -u)\"" in workflow
+    assert "printf 'BACKUP_GID=%s\\n' \"$(id -g)\"" in workflow
 
 
 def test_deploy_synchronizes_and_verifies_grafana_admin_credentials() -> None:

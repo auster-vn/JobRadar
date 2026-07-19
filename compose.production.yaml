@@ -81,7 +81,7 @@ services:
 
   backup:
     image: pgvector/pgvector:pg16
-    user: "0:0"
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
     entrypoint: ["/usr/bin/env", "bash", "/usr/local/bin/backup_loop.sh"]
     environment:
       PGHOST: db
