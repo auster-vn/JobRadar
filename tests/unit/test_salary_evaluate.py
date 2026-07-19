@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -109,21 +110,20 @@ def test_salary_evaluator_requires_committed_provenance_when_requested() -> None
     )
 
 
-def test_checked_in_evidence_matches_the_open_publication_gates() -> None:
+def test_checked_in_evidence_passes_the_publication_gates() -> None:
     evidence_path = PROJECT_ROOT / "docs/evidence/salary_evaluation.json"
     evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
 
-    assert evidence["run_id"] == "b4d7b96c9ed2449484411cfdf278a6ba"
+    assert re.fullmatch(r"[0-9a-f]{32}", evidence["run_id"])
+    assert re.fullmatch(r"[0-9a-f]{40}", evidence["source_revision"])
+    assert evidence["status"] == "published"
+    assert evidence["failed_gates"] == []
     failures = evaluation_failures(
         evidence,
         require_data_ready=True,
         require_committed_revision=True,
     )
-    assert failures == [
-        "test_mape exceeds 0.1500",
-        "evaluation_unit must be market_segment_median",
-        "data_readiness must pass",
-    ]
+    assert failures == []
     assert (
         main(
             [
@@ -132,7 +132,7 @@ def test_checked_in_evidence_matches_the_open_publication_gates() -> None:
                 "--require-committed-revision",
             ]
         )
-        == 1
+        == 0
     )
 
 

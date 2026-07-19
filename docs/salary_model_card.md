@@ -7,7 +7,8 @@ Last reviewed: 2026-07-19
 The release candidate passes the repository publication contract on a clean
 database reconstructed only from the six pinned salary snapshots. Its holdout
 MAPE is **11.66%**, below the fixed 15% maximum, and `data_readiness` is `true`.
-The machine-readable result is checked in at
+MLflow run `20fafbaba37543d3ae8d800febb3154f` is bound to source revision
+`435a34f3e83e92d71abddff4809c146262e1bb39`. The machine-readable result is checked in at
 [`docs/evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
 The model is an aggregate market-benchmark estimator. It is not an individual

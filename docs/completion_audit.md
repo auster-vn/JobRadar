@@ -26,7 +26,7 @@ remain required. No production URL or successful deployment is claimed here.
 | MVP data volume | Pass | Operational PostgreSQL contains 630 unique ITViec jobs |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass locally | Ruff, Ruff format, strict mypy and the backend test suite pass with the repository's 70% coverage gate enforced |
+| Backend quality | Pass locally | Ruff, Ruff format, strict mypy and 244 tests pass with 80.64% coverage; the repository enforces at least 70% |
 | Analytics | Pass locally | dbt source freshness passes and `dbt build` completes 32/32 nodes |
 | Frontend | Pass locally | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass |
 | Data collection | Pass locally | ITViec, TopCV and VietnamWorks completed real batches; the broad TopCV route returned 465 jobs with zero final errors |
@@ -110,7 +110,8 @@ manifest-matching holdout, MAPE at or below 15%, and a reachable 40-character Gi
 source revision. The release workflow retrains at its checked-out SHA, validates
 the serialized bundle, embeds it only into the ML image, installs it into an
 immutable revision directory and makes ML health fail if that exact bundle does
-not load. The final run ID and source revision are recorded in
+not load. Clean-room run `20fafbaba37543d3ae8d800febb3154f` is bound to source
+revision `435a34f3e83e92d71abddff4809c146262e1bb39`; the compact record is
 [`evidence/salary_evaluation.json`](evidence/salary_evaluation.json).
 
 The model's negative R2 and narrow six-segment holdout are not hidden by the MAPE
@@ -123,7 +124,8 @@ predictor; full limitations are documented in
 The following checks were completed on 2026-07-19:
 
 - Ruff lint and formatting, plus strict mypy over 102 source files;
-- backend/unit/integration tests with the 70% coverage threshold enforced;
+- 244 backend/unit/integration tests with 80.64% coverage and the 70% threshold
+  enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
 - npm audit with zero known vulnerabilities, frontend lint/typecheck/build and
@@ -136,8 +138,8 @@ The following checks were completed on 2026-07-19:
 - seeded ML-image installation plus a serving health check with
   `model_available=true` and matching image/artifact revisions.
 
-Exact final test counts and the GitHub run URL will be updated from the clean
-post-commit validation and remote workflow, not estimated in advance.
+The GitHub run URL remains pending until this revision is pushed and the remote
+workflow reaches a terminal state.
 
 ## Remaining Production Gates
 
