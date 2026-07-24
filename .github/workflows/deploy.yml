@@ -151,7 +151,7 @@ jobs:
       - id: smoke
         name: Verify private HTTPS production routes
         if: steps.deploy.outcome == 'success'
-        run: bash scripts/production_smoke.sh "https://$DOMAIN"
+        run: bash scripts/production_smoke.sh "https://$DOMAIN" "$RELEASE_SHA"
 
       - name: Roll back or stop failed release
         if: failure() && steps.smoke.outcome == 'failure'

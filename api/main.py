@@ -60,7 +60,11 @@ async def ready(response: Response) -> dict[str, str]:
 
 @app.get("/version", tags=["meta"])
 async def version() -> dict[str, str]:
-    return {"version": app.version, "environment": settings.app_env}
+    return {
+        "version": app.version,
+        "environment": settings.app_env,
+        "source_revision": settings.source_revision,
+    }
 
 
 @app.get("/metrics", include_in_schema=False)

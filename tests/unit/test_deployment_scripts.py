@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 
 PROJECT_ROOT = Path(__file__).parents[2]
+TEST_REVISION = "a" * 40
 
 
 def _release(root: Path, release_id: str) -> Path:
@@ -681,7 +682,12 @@ class _SmokeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         self.paths.append(self.path)
-        body = b'{"status":"ready"}' if self.path == "/health/ready" else b"{}"
+        if self.path == "/health/ready":
+            body = b'{"status":"ready"}'
+        elif self.path == "/version":
+            body = f'{{"source_revision":"{TEST_REVISION}"}}'.encode()
+        else:
+            body = b"{}"
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
@@ -702,6 +708,7 @@ def test_production_smoke_checks_public_routes() -> None:
             [
                 str(PROJECT_ROOT / "scripts" / "production_smoke.sh"),
                 f"http://127.0.0.1:{server.server_port}",
+                TEST_REVISION,
             ],
             check=True,
         )
@@ -712,10 +719,14 @@ def test_production_smoke_checks_public_routes() -> None:
 
     assert _SmokeHandler.paths == [
         "/health/ready",
+        "/version",
         "/",
         "/api/jobs?limit=1",
         "/api/salary/bands",
     ]
+
+    next_config = (PROJECT_ROOT / "web" / "next.config.mjs").read_text(encoding="utf-8")
+    assert '{source: "/version", destination: `${apiBase}/version`}' in next_config
 
 
 def test_backup_loop_writes_complete_restricted_dump(tmp_path: Path) -> None:

@@ -208,7 +208,7 @@ readiness, dashboard, jobs and salary routes passed HTTPS smoke through
 Tailscale Serve.
 
 For subsequent revisions, the current CI, Release and Deploy workflow results
-and the active `/health/ready` source revision are the canonical evidence. A
+and the active `/version` source revision are the canonical evidence. A
 historical successful run is never used to accept a newer SHA.
 
 Runtime verification also established:

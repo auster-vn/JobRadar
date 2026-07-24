@@ -49,7 +49,8 @@ Routes under `/api/admin` require `X-Admin-Key`. They expose pipeline counts,
 scrape batches, queued ITViec, TopCV and VietnamWorks triggers, salary data
 readiness and retraining. Never expose this key to browser code. `/health`,
 `/health/ready`, `/version` and `/metrics` support container orchestration and
-monitoring.
+monitoring. `/version` includes the immutable `source_revision` embedded in the
+release image so deployment checks can verify the active Git SHA.
 
 Anonymous and authenticated clients have separate Redis-backed fixed-window
 limits. A limited response is HTTP 429 and includes `Retry-After`. The limiter

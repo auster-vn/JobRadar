@@ -327,8 +327,9 @@ all secrets, and the home-scoped deployment root. It installs only release
 configuration under `releases/<commit>`, authenticates to GHCR with the
 workflow's short-lived token, and starts prebuilt images with `--no-build`.
 Internal migration, API, and model health checks activate the `current` symlink;
-private HTTPS smoke checks cover readiness, the dashboard, jobs, and salary
-routes. Failure restores the previous release and leaves the workflow failed.
+private HTTPS smoke checks cover readiness, exact source revision, the
+dashboard, jobs, and salary routes. Failure restores the previous release and
+leaves the workflow failed.
 Release success alone is never production evidence.
 
 The runner intentionally uses a restrictive umask. Installation grants read
