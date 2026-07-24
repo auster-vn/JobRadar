@@ -13,6 +13,7 @@ permissions:
 
 env:
   RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  UV_VERSION: "0.11.29"
 
 jobs:
   model:
@@ -32,7 +33,7 @@ jobs:
     env:
       APP_ENV: test
       DATABASE_URL: postgresql+asyncpg://jobradarvn:jobradarvn@localhost:5432/jobradarvn
-      MLFLOW_TRACKING_URI: file:artifacts/mlruns
+      MLFLOW_TRACKING_URI: sqlite:///artifacts/release-mlflow.db
       SALARY_HOLDOUT_MANIFEST: data/salary_holdout_2026-07-19.json
       SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
@@ -42,6 +43,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.3.2
         with:
           enable-cache: true
+          version: ${{ env.UV_VERSION }}
       - run: uv sync --extra ml
       - run: uv run alembic upgrade head
       - name: Import immutable salary snapshots
@@ -109,3 +111,33 @@ jobs:
           build-args: SOURCE_REVISION=${{ env.RELEASE_SHA }}
           cache-from: type=gha,scope=release-${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=release-${{ matrix.image }}
+      - id: trivy
+        name: Scan immutable release image
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ env.RELEASE_SHA }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          report="$RUNNER_TEMP/trivy-${{ matrix.image }}.json"
+          echo "report=$report" >> "$GITHUB_OUTPUT"
+          docker run --rm \
+            -e TRIVY_USERNAME \
+            -e TRIVY_PASSWORD \
+            aquasec/trivy@sha256:c6e969c5662a546ad5de4a73c2a6b7a7c627f86d916903e175aa623af5b97ada \
+            image --no-progress --format json --scanners vuln,secret \
+            --severity HIGH,CRITICAL "$IMAGE" > "$report"
+          test -s "$report"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: container-security-${{ matrix.image }}-${{ env.RELEASE_SHA }}
+          path: ${{ steps.trivy.outputs.report }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce container security policy
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ env.RELEASE_SHA }}
+        run: >-
+          python3 scripts/enforce_container_security_report.py
+          "${{ steps.trivy.outputs.report }}"
+          --expected-image "$IMAGE"
+          --summary-file "$GITHUB_STEP_SUMMARY"

@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_user: str | None = None
     smtp_password: str | None = None
-    mlflow_tracking_uri: str = "file:artifacts/mlruns"
+    mlflow_tracking_uri: str = "sqlite:///artifacts/mlflow.db"
     mlflow_experiment: str = "jobradar-salary"
     salary_model_url: str | None = None
     salary_model_timeout_seconds: float = Field(default=2.0, gt=0, le=10)

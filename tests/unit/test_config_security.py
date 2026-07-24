@@ -18,6 +18,12 @@ def test_production_accepts_independent_strong_secrets() -> None:
     _production_settings().validate_production_secrets()
 
 
+def test_default_mlflow_tracking_uses_supported_database_backend() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+
+    assert settings.mlflow_tracking_uri == "sqlite:///artifacts/mlflow.db"
+
+
 @pytest.mark.parametrize(
     "key",
     ["short", "development-cv-encryption-key-change-me"],

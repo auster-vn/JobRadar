@@ -172,6 +172,8 @@ services:
 
   mlflow:
     image: ${ML_IMAGE:-jobradarvn-ml-worker:latest}
+    environment:
+      MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"
     command: >-
       mlflow server --host 0.0.0.0 --port 5000
       --backend-store-uri sqlite:////app/artifacts/mlflow.db

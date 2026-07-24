@@ -581,6 +581,37 @@ def test_release_images_preserve_source_revision() -> None:
         assert "org.opencontainers.image.revision=$SOURCE_REVISION" in contents
 
 
+def test_dependency_and_release_image_security_gates_are_enforced() -> None:
+    ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    release = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    compose = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "uv run python scripts/audit_python_dependencies.py" in ci
+    assert "Scan immutable release image" in release
+    assert "aquasec/trivy@sha256:" in release
+    assert "--format json" in release
+    assert "--severity HIGH,CRITICAL" in release
+    assert "--scanners vuln,secret" in release
+    assert "scripts/enforce_container_security_report.py" in release
+    assert '--expected-image "$IMAGE"' in release
+    assert "container-security-${{ matrix.image }}" in release
+    assert "--ignore-unfixed" not in release
+    assert "continue-on-error:" not in release
+    assert "MLFLOW_TRACKING_URI: sqlite:///artifacts/release-mlflow.db" in release
+    assert "MLFLOW_ALLOW_FILE_STORE" not in release
+    assert 'MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"' in compose
+    assert 'UV_VERSION: "0.11.29"' in ci
+    assert 'UV_VERSION: "0.11.29"' in release
+    for dockerfile in ("Dockerfile", "Dockerfile.ml"):
+        contents = (PROJECT_ROOT / dockerfile).read_text(encoding="utf-8")
+        assert "ARG UV_VERSION=0.11.29" in contents
+        assert "pip uninstall --yes uv" in contents
+    web_dockerfile = (PROJECT_ROOT / "web/Dockerfile").read_text(encoding="utf-8")
+    assert web_dockerfile.count("FROM node:24-alpine") == 3
+    assert "apk upgrade --no-cache" in web_dockerfile
+    assert "rm -rf /usr/local/lib/node_modules/npm" in web_dockerfile
+
+
 def test_release_builds_and_installs_a_revision_bound_salary_model() -> None:
     workflow = (PROJECT_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     compose = (PROJECT_ROOT / "compose.yaml").read_text(encoding="utf-8")

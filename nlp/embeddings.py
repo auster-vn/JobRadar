@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import Protocol, cast
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
 EMBEDDING_DIMENSIONS = 384
 
 
@@ -15,7 +16,15 @@ class SentenceEncoder(Protocol):
 def _model() -> SentenceEncoder:
     from sentence_transformers import SentenceTransformer
 
-    return cast(SentenceEncoder, SentenceTransformer(MODEL_NAME))
+    return cast(
+        SentenceEncoder,
+        SentenceTransformer(
+            MODEL_NAME,
+            revision=MODEL_REVISION,
+            trust_remote_code=False,
+            model_kwargs={"use_safetensors": True},
+        ),
+    )
 
 
 def encode_texts(texts: list[str]) -> list[list[float]]:

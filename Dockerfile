@@ -3,7 +3,8 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv==0.9.7
+ARG UV_VERSION=0.11.29
+RUN pip install --no-cache-dir "uv==$UV_VERSION"
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --no-install-project --extra scraping
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -19,6 +20,7 @@ COPY data data
 COPY migrations migrations
 COPY alembic.ini ./
 RUN uv sync --frozen --no-dev --extra scraping
+RUN pip uninstall --yes uv
 RUN groupadd --system jobradar && useradd --system --gid jobradar --home /app jobradar \
     && chown -R jobradar:jobradar /app
 
