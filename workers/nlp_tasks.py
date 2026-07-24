@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from api.core.database import session_factory
@@ -76,7 +76,20 @@ async def _embed_profile(user_id: uuid.UUID) -> dict[str, Any]:
         cv_text = await load_cv_text(session, user_id)
         if not cv_text:
             return {"status": "skipped", "reason": "profile_or_cv_not_found"}
-        profile.cv_embedding = encode_texts([cv_text])[0]
+        vector = encode_texts([cv_text])[0]
+        result = await session.execute(
+            update(UserProfile)
+            .where(
+                UserProfile.user_id == user_id,
+                UserProfile.cv_text_encrypted == profile.cv_text_encrypted,
+            )
+            .values(cv_embedding=vector)
+            .returning(UserProfile.user_id)
+            .execution_options(synchronize_session=False)
+        )
+        if result.scalar_one_or_none() is None:
+            await session.rollback()
+            return {"status": "skipped", "reason": "profile_or_cv_changed"}
         await session.commit()
     return {"status": "completed", "user_id": str(user_id), "model": MODEL_NAME}
 
