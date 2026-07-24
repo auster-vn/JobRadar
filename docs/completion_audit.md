@@ -26,13 +26,13 @@ of this completion claim.
 
 | Scope | Status | Measured evidence |
 |---|---|---|
-| MVP data volume | Pass | Operational PostgreSQL contains 1,782 unique jobs: 630 ITViec, 690 TopCV and 462 VietnamWorks |
+| MVP data volume | Pass | Operational PostgreSQL contains 2,244 unique jobs: 791 ITViec, 915 TopCV and 538 VietnamWorks |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 284 tests pass with 80.69% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 287 tests pass with 81% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally, in CI and directly against production |
-| Data collection | Pass in production | ITViec, TopCV and VietnamWorks have completed real batches; the post-deploy TopCV probe parsed and updated 48 jobs with zero errors |
+| Data collection | Pass in production | ITViec, TopCV and VietnamWorks have completed real batches; the latest scheduled TopCV batch processed 442 jobs with zero errors |
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
 | Infrastructure contract | Pass | Terraform format/init/validate and two tests, private self-hosted Compose ingress, actionlint and monitoring validation pass; Docker/Tailscale/runner services are persistent and only web is bound to loopback |
 | Dependency security | Pass | `pip-audit` plus direct OSV verification covers 210 Python distributions and the custom PyTorch wheel with zero known findings; npm audit reports zero |
@@ -48,9 +48,9 @@ fixtures. The latest measured source inventory is:
 
 | Source | Unique jobs | Jobs retaining disclosed salary |
 |---|---:|---:|
-| ITViec | 630 | 0 |
-| TopCV | 690 | 383 |
-| VietnamWorks | 462 | 172 |
+| ITViec | 791 | 0 |
+| TopCV | 915 | 502 |
+| VietnamWorks | 538 | 198 |
 
 TopCV batch `eb00da89-c02b-49d1-be3e-68d7a3946c50` traversed the broad public IT
 route and completed with 465 jobs, 29 inserts, 436 updates and zero final errors.
@@ -60,11 +60,12 @@ upper-bound and range forms. The adapter retains robots, throttling, declared
 identity and fail-closed challenge handling; it does not solve CAPTCHAs or use
 proxy rotation.
 
-After production activation, TopCV batch
-`4f493de4-5a15-441a-b8be-23aaaf02df45` ran through the production Celery queue.
-It parsed 48 public jobs, updated all 48 idempotently, inserted no duplicates and
-completed with zero errors. The public production jobs API reports all 690
-retained TopCV records.
+The latest production TopCV batch,
+`68031008-9497-4f71-8c60-e5f1a42e0c4e`, ran through the scheduled Celery queue.
+It parsed 442 public jobs, inserted 225, updated 217 idempotently and completed
+with zero errors. The operational database retains 915 unique TopCV records.
+Across all 2,244 jobs, title, source URL, salary-range and source-key invariant
+checks report zero invalid rows.
 
 Repeated collection preserves one salary observation per source posting. A
 later payload that hides salary cannot erase an earlier valid disclosure, and
@@ -165,9 +166,9 @@ upgrades Alpine packages and removes npm from the final non-root image.
 
 The following checks were completed on 2026-07-24:
 
-- Ruff lint and formatting over 157 files, plus strict mypy over 105 source
+- Ruff lint and formatting over 159 files, plus strict mypy over 105 source
   files;
-- 284 backend/unit/integration tests with 80.69% coverage and the 70% threshold
+- 287 backend/unit/integration tests with 81% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
@@ -183,29 +184,30 @@ The following checks were completed on 2026-07-24:
 - seeded ML-image installation plus a serving health check with
   `model_available=true` and matching image/artifact revisions.
 
-## Historical Remote Evidence
+## Measured Remote Evidence
 
-The fully completed delivery chain immediately preceding the 2026-07-24
-dependency refresh remains immutable historical evidence. GitHub CI run
-[`29696200498`](https://github.com/auster-vn/JobRadar/actions/runs/29696200498)
-passed every job at
-`6580971a4380617ce9b70ecbad51dea8adb2704f`.
+The immutable delivery chain for application revision
+`4303df6d732cc33637a325dbe790edde0bd05c5c`, immediately preceding this
+documentation refresh, remains reproducible evidence. GitHub CI run
+[`30107628940`](https://github.com/auster-vn/JobRadar/actions/runs/30107628940)
+passed every job, including 287 tests at 81% coverage, 32/32 dbt nodes, frontend
+build and browser E2E, infrastructure tests, ML contracts and all three
+container builds.
 
 Dependent Release run
-[`29696560618`](https://github.com/auster-vn/JobRadar/actions/runs/29696560618)
-reconstructed 3,208 rows, published MLflow run
-`35275d5b88424288b344880ff49519d3` at the same source revision with
-11.8803047% MAPE, `data_ready=1`, six test segments and 69 holdout rows.
+[`30108172301`](https://github.com/auster-vn/JobRadar/actions/runs/30108172301)
+reconstructed 3,208 salary observations, published MLflow run
+`b5d0ec6594d54c19a235442c5478b7ab` at the same source revision with
+11.8803049% MAPE, `data_ready=1`, six test segments and 69 holdout rows, then
+published three immutable images and their security reports.
 
 Deploy run
-[`29696775928`](https://github.com/auster-vn/JobRadar/actions/runs/29696775928)
-then activated that exact revision on the repository-scoped
-`cp-jobradar-production` runner. Alembic is at
-`007_dedupe_salary_sources (head)`; migration, salary-data and salary-model
-one-shot services all exited zero; ML health loaded a published artifact whose
-40-character `source_revision` matches the active release; and the external
-readiness, dashboard, jobs and salary routes passed HTTPS smoke through
-Tailscale Serve.
+[`30108725333`](https://github.com/auster-vn/JobRadar/actions/runs/30108725333)
+activated that exact revision on the repository-scoped production runner.
+Alembic reached `007_dedupe_salary_sources (head)`; migration, internal health,
+exact-revision verification and private HTTPS smoke passed. Direct production
+browser E2E passed 3/3, and the concurrent CV/account deletion regression
+completed as `profile_or_cv_changed` without a stale ORM write.
 
 For subsequent revisions, the current CI, Release and Deploy workflow results
 and the active `/version` source revision are the canonical evidence. A
