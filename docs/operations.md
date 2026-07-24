@@ -105,9 +105,9 @@ public API fallback.
 
 ## Quality and capacity gates
 
-Run backend gates with `uv run ruff check .`, `uv run mypy --strict api nlp
-scrapers workers ml flows scripts`, and `uv run pytest --cov=api --cov=nlp
---cov=scrapers --cov=ml`. Run
+Run backend gates with `uv run python scripts/audit_python_dependencies.py`,
+`uv run ruff check .`, `uv run mypy --strict api nlp scrapers workers ml flows
+scripts`, and `uv run pytest --cov=api --cov=nlp --cov=scrapers --cov=ml`. Run
 dbt with `DBT_HOST=localhost uv run dbt build --project-dir analytics
 --profiles-dir analytics`. Frontend gates are `npm audit`, `npm run lint`, `npm
 run typecheck`, and `npm run build` from `web/`.
@@ -147,6 +147,7 @@ only the six pinned snapshots:
 ```bash
 export SOURCE_REVISION="$(git rev-parse HEAD)"
 export SALARY_HOLDOUT_MANIFEST=data/salary_holdout_2026-07-19.json
+export MLFLOW_TRACKING_URI=sqlite:///artifacts/release-mlflow.db
 uv run python scripts/train_salary_release.py
 ```
 
@@ -309,9 +310,17 @@ key. Optional secrets are `LINKEDIN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`,
 
 `.github/workflows/release.yml` runs only after successful CI on `main` or by
 manual dispatch. It reconstructs and validates the salary model, then publishes
-backend, ML, and web images using immutable commit-SHA tags. A successful Release
-triggers `.github/workflows/deploy.yml` on the self-hosted runner. A failed model
-or image gate cannot start deployment.
+backend, ML, and web images using immutable commit-SHA tags. Each published image
+is scanned by a digest-pinned Trivy container for secrets and High/Critical
+vulnerabilities. The JSON report is retained for 30 days before the policy gate
+runs. Secrets, findings with an available fixed version, malformed reports, and
+unfixed findings outside the explicit upstream `affected` or `fix_deferred`
+states fail the job. Upstream-unfixed findings remain counted in the report and
+GitHub job summary; no `continue-on-error` or scanner ignore flag is used.
+
+A successful Release triggers `.github/workflows/deploy.yml` on the self-hosted
+runner. A failed model, image build, scan, or report gate cannot start
+deployment.
 
 Deploy validates Docker, Tailscale connectivity, the exact `.ts.net` hostname,
 all secrets, and the home-scoped deployment root. It installs only release

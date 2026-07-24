@@ -13,13 +13,14 @@ salary benchmarks, matching, and alerts through a FastAPI API and a Vietnamese
 Next.js dashboard.
 
 > **Project status:** production-ready for the private single-operator target.
-> At audited commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`, CI, release
-> retraining, all three immutable image builds, self-hosted deployment, migration,
-> internal health checks, private HTTPS smoke, backup verification, and direct
-> production browser E2E all pass. The published salary model has 11.88% MAPE
+> A revision is accepted only after CI, release retraining, all three immutable
+> image builds and security reports, self-hosted deployment, migration, health
+> checks, private HTTPS smoke, backup verification, and production browser E2E
+> pass for that same revision. The published salary model has 11.88% MAPE
 > against the fixed 15% maximum with `data_readiness=true`. Production is
 > tailnet-only at <https://jobradar-production.tail92479f.ts.net>. See the
-> [completion audit](docs/completion_audit.md) for measured evidence.
+> [completion audit](docs/completion_audit.md) for measured evidence and the
+> workflow badges above for current `main`.
 
 ## Capabilities
 
@@ -42,15 +43,17 @@ Current acceptance results are recorded in
 
 | Gate | Result |
 |---|---:|
-| Backend unit and integration tests | 265 passed |
-| Combined API, NLP, scraper, and ML coverage | 80.62% |
+| Backend unit and integration tests | 284 passed |
+| Combined API, NLP, scraper, and ML coverage | 80.69% |
 | dbt build | 32/32 passed |
 | Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
 | Frontend E2E | 3 Playwright workflows passed in CI and directly against production on desktop/mobile paths |
 | Salary publication | Pass in CI, release and production: 11.88% MAPE vs. 15% maximum; readiness pass |
-| GitHub CI | [Run 29695553185](https://github.com/auster-vn/JobRadar/actions/runs/29695553185) passed every job |
-| Release model and images | [Run 29695749515](https://github.com/auster-vn/JobRadar/actions/runs/29695749515) passed |
-| Live production deployment | [Deploy 29695894275](https://github.com/auster-vn/JobRadar/actions/runs/29695894275) passed at the private Tailscale URL |
+| Dependency security | Python audit and npm audit report zero known dependency vulnerabilities |
+| Release image security | Every image publishes a Trivy JSON artifact; secrets and every remediable High/Critical finding fail release |
+| GitHub CI | The [CI workflow](https://github.com/auster-vn/JobRadar/actions/workflows/ci.yml) must pass every job for the release SHA |
+| Release model and images | The [Release workflow](https://github.com/auster-vn/JobRadar/actions/workflows/release.yml) must pass at the same SHA |
+| Live production deployment | The [Deploy workflow](https://github.com/auster-vn/JobRadar/actions/workflows/deploy.yml) must pass private smoke at the Tailscale URL |
 
 ## Architecture
 
@@ -87,7 +90,7 @@ documented in [`docs/architecture.md`](docs/architecture.md).
 
 | Layer | Technologies |
 |---|---|
-| Web | Next.js 16, React 19, TypeScript 5, Recharts, Playwright |
+| Web | Node.js 24 LTS, Next.js 16, React 19, TypeScript 5, Recharts, Playwright |
 | API | Python 3.12+, FastAPI, Pydantic, SQLAlchemy async, Alembic |
 | Storage | PostgreSQL 16, pgvector HNSW, pgcrypto, Redis 7 |
 | Data and orchestration | Celery, dbt-postgres, Prefect-compatible flows, allowlisted Playwright rendering |
@@ -101,7 +104,7 @@ documented in [`docs/architecture.md`](docs/architecture.md).
 
 - Docker 24+ with Docker Compose v2
 - At least 8 GB RAM recommended for the complete local stack
-- `uv` and Node.js 22 only when running services outside Docker
+- `uv` and Node.js 24 only when running services outside Docker
 
 ### Start the application
 
@@ -232,6 +235,7 @@ proxies those requests to the API configured in `web/next.config.mjs`.
 Run the same primary checks enforced by CI:
 
 ```bash
+uv run python scripts/audit_python_dependencies.py
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy --strict api nlp scrapers workers ml flows scripts
@@ -252,7 +256,12 @@ npm run test:e2e
 
 CI also validates migrations, the skill benchmark, Terraform, Compose contracts,
 Prometheus rules, Grafana dashboards, container builds, and the checked-in salary
-evaluation evidence.
+evaluation evidence. Release scans every immutable image for secrets and
+High/Critical vulnerabilities and retains the complete Trivy JSON as a workflow
+artifact. A secret, a vulnerability with an available fix, or an unfixed finding
+outside the explicit upstream `affected`/`fix_deferred` states fails release.
+Unfixed vendor findings remain visible in the report and job summary; they are
+not hidden with `continue-on-error` or a scanner ignore flag.
 
 ## API Overview
 
@@ -314,6 +323,10 @@ machine-readable evidence is checked in at
   routes require a separate key.
 - Production rejects placeholder secrets and exposes PostgreSQL, Redis, MLflow,
   and monitoring only on the private Compose network.
+- Python and JavaScript dependencies are audited in CI; release images are
+  scanned with a digest-pinned Trivy image and retain machine-readable reports.
+- The web runtime uses Node.js 24 LTS, removes npm after building, runs as a
+  non-root user, and upgrades Alpine packages before publication.
 
 Historical datasets and taxonomies retain their upstream license assertions and
 provenance; operational derivatives without a published dataset license are

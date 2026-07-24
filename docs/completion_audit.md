@@ -1,6 +1,6 @@
 # Completion Audit
 
-Audit date: 2026-07-19
+Audit date: 2026-07-24
 
 This audit maps the executable acceptance criteria in
 [`implementation_plan.md`](../implementation_plan.md) to measured evidence. A
@@ -10,12 +10,12 @@ the relevant test, release, deployment and smoke-test evidence must also exist.
 ## Current Verdict
 
 JobRadar is **production-complete for its documented private, single-operator
-target** at audited commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`. A clean
-database reconstructed from the six pinned snapshots produces a published
-salary model with 11.88% MAPE and passing data readiness. CI, release retraining,
-all three immutable image builds, self-hosted deployment, migration, internal
-health, private HTTPS smoke, production browser E2E, and backup verification all
-pass.
+target**. Completion applies only to a Git revision for which CI, release
+retraining, all three immutable image builds and security reports, self-hosted
+deployment, migration, internal health, private HTTPS smoke, production browser
+E2E, and backup verification all pass. A clean database reconstructed from the
+six pinned snapshots produces a published salary model with 11.88% MAPE and
+passing data readiness.
 
 The live service is <https://jobradar-production.tail92479f.ts.net> and is
 intentionally reachable only by authenticated devices in the owner's Tailscale
@@ -29,16 +29,17 @@ of this completion claim.
 | MVP data volume | Pass | Operational PostgreSQL contains 1,782 unique jobs: 630 ITViec, 690 TopCV and 462 VietnamWorks |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 265 tests pass with 80.62% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 284 tests pass with 80.69% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally, in CI and directly against production |
 | Data collection | Pass in production | ITViec, TopCV and VietnamWorks have completed real batches; the post-deploy TopCV probe parsed and updated 48 jobs with zero errors |
 | Salary ML publication | Pass | Frozen TopCV holdout MAPE 11.88% versus a fixed 15% maximum; readiness passes locally, in CI and in release retraining |
 | Infrastructure contract | Pass | Terraform format/init/validate and two tests, private self-hosted Compose ingress, actionlint and monitoring validation pass; Docker/Tailscale/runner services are persistent and only web is bound to loopback |
-| Release images | Pass | Backend, web and release-seeded ML images build locally and publish to GHCR at the audited SHA |
-| GitHub CI | Pass | [Run 29695553185](https://github.com/auster-vn/JobRadar/actions/runs/29695553185) completed every job successfully |
-| Release workflow | Pass | [Run 29695749515](https://github.com/auster-vn/JobRadar/actions/runs/29695749515) published the model and all three images successfully |
-| Live production | Pass | [Deploy 29695894275](https://github.com/auster-vn/JobRadar/actions/runs/29695894275) passed migration, internal health and private HTTPS smoke at the tailnet URL |
+| Dependency security | Pass | `pip-audit` plus direct OSV verification covers 210 Python distributions and the custom PyTorch wheel with zero known findings; npm audit reports zero |
+| Release images | Pass | Backend, web and release-seeded ML images build locally; Trivy finds no secret or remediable High/Critical vulnerability |
+| GitHub CI | Required per revision | The [CI workflow](https://github.com/auster-vn/JobRadar/actions/workflows/ci.yml) must complete every job successfully |
+| Release workflow | Required per revision | The [Release workflow](https://github.com/auster-vn/JobRadar/actions/workflows/release.yml) must publish the model, images, and three security-report artifacts |
+| Live production | Required per revision | The [Deploy workflow](https://github.com/auster-vn/JobRadar/actions/workflows/deploy.yml) must pass migration, internal health, private HTTPS smoke and rollback checks |
 
 ## Collection Evidence
 
@@ -133,42 +134,71 @@ TF-IDF feature limits now resolve equal-frequency terms lexically. Independent
 local and GitHub release encoders produced the same canonical vocabulary digest,
 `2bd8ab1a5bc3d440a6f36d662bb1f34dd6d466e9f17e10d5feb2c5be79e1fbbf`.
 
+## Supply-chain Evidence
+
+The 2026-07-24 dependency refresh upgraded MLflow, PyArrow, Sentence
+Transformers, Transformers, PyTorch, pytest, Next.js, PostCSS, sharp, GitPython,
+and the build/runtime toolchains. Python audit covers the PyPI environment with
+`pip-audit` and verifies the custom CPU PyTorch wheel directly against OSV.
+Frontend audit resolves the exact npm lockfile. Both report zero known
+dependency vulnerabilities.
+
+Release scans use Trivy `0.72.0` by immutable digest, retain one JSON artifact
+per image for 30 days, and evaluate the report with a fail-closed repository
+script:
+
+| Local image | Secrets | Remediable High/Critical | Upstream-unfixed High/Critical |
+|---|---:|---:|---:|
+| Backend with Playwright | 0 | 0 | 44: 6 Critical, 38 High |
+| ML runtime | 0 | 0 | 23: 4 Critical, 19 High |
+| Web runtime | 0 | 0 | 0 |
+
+The Debian findings have no vendor fixed version and are currently marked only
+`affected` or `fix_deferred`; their full package/CVE records remain in the JSON
+artifact and job summary. Any available fixed version, secret, unexpected
+status, malformed report, or missing image digest fails release. This is an
+explicit upstream-risk record, not `--ignore-unfixed`, a lower severity
+threshold, or `continue-on-error`. The web runtime moved to Node.js 24 LTS,
+upgrades Alpine packages and removes npm from the final non-root image.
+
 ## Local Validation Evidence
 
-The following checks were completed on 2026-07-19:
+The following checks were completed on 2026-07-24:
 
-- Ruff lint and formatting, plus strict mypy over 103 source files;
-- 265 backend/unit/integration tests with 80.62% coverage and the 70% threshold
+- Ruff lint and formatting over 157 files, plus strict mypy over 105 source
+  files;
+- 284 backend/unit/integration tests with 80.69% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
-- npm audit with zero known vulnerabilities, frontend lint/typecheck/build and
-  three Playwright workflows;
-- Python environment audit with zero known vulnerabilities;
+- Python environment and npm audits with zero known dependency vulnerabilities,
+  plus frontend lint/typecheck/build and three Playwright workflows;
 - Terraform 1.15.5 format/init/validate and two mock-provider tests;
 - actionlint 1.7.12, development/collector/production Compose resolution,
   Prometheus rules and five Grafana dashboard contracts;
-- backend, web and ML Docker builds; and
+- backend, web and ML Docker builds plus fail-closed Trivy report evaluation;
+- a clean-room MLflow 3.14 release rehearsal using a supported SQLite tracking
+  backend, with `data_ready=1`, six segments, 69 holdout rows and 11.8803% MAPE;
+  and
 - seeded ML-image installation plus a serving health check with
   `model_available=true` and matching image/artifact revisions.
 
-## Remote Delivery Evidence
+## Historical Remote Evidence
 
-GitHub CI run
-[`29695553185`](https://github.com/auster-vn/JobRadar/actions/runs/29695553185)
-passed backend, frontend, browser E2E, infrastructure, ML contract, ML
-publication and all three container builds at
-`12a5d99b39b9d76c9e2e976d9390485facd5cbff`.
+The fully completed delivery chain immediately preceding the 2026-07-24
+dependency refresh remains immutable historical evidence. GitHub CI run
+[`29696200498`](https://github.com/auster-vn/JobRadar/actions/runs/29696200498)
+passed every job at
+`6580971a4380617ce9b70ecbad51dea8adb2704f`.
 
 Dependent Release run
-[`29695749515`](https://github.com/auster-vn/JobRadar/actions/runs/29695749515)
+[`29696560618`](https://github.com/auster-vn/JobRadar/actions/runs/29696560618)
 reconstructed 3,208 rows, published MLflow run
-`ea4f8bd74b724868abae29cf123a50b9` at the same source revision with
-11.8803047% MAPE, `data_ready=1`, six test segments and 69 holdout rows. Backend,
-web and seeded ML images were published under the immutable commit tag.
+`35275d5b88424288b344880ff49519d3` at the same source revision with
+11.8803047% MAPE, `data_ready=1`, six test segments and 69 holdout rows.
 
 Deploy run
-[`29695894275`](https://github.com/auster-vn/JobRadar/actions/runs/29695894275)
+[`29696775928`](https://github.com/auster-vn/JobRadar/actions/runs/29696775928)
 then activated that exact revision on the repository-scoped
 `cp-jobradar-production` runner. Alembic is at
 `007_dedupe_salary_sources (head)`; migration, salary-data and salary-model
@@ -176,6 +206,10 @@ one-shot services all exited zero; ML health loaded a published artifact whose
 40-character `source_revision` matches the active release; and the external
 readiness, dashboard, jobs and salary routes passed HTTPS smoke through
 Tailscale Serve.
+
+For subsequent revisions, the current CI, Release and Deploy workflow results
+and the active `/health/ready` source revision are the canonical evidence. A
+historical successful run is never used to accept a newer SHA.
 
 Runtime verification also established:
 
