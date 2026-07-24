@@ -74,6 +74,8 @@ def test_deploy_script_activates_and_rolls_back_releases(tmp_path: Path) -> None
     assert "compose.monitoring.production.yaml pull" in log
     assert "compose.monitoring.production.yaml up -d --no-build" in log
     assert log.count("exec -T grafana sh -ceu") == 3
+    assert log.count("exec -T prometheus promtool check config") == 3
+    assert log.count("kill -s SIGHUP prometheus") == 3
     assert log.index("image prune -f") < log.index("compose.monitoring.production.yaml pull")
 
 
@@ -256,6 +258,69 @@ def test_failed_grafana_credential_sync_stops_initial_stack(tmp_path: Path) -> N
     assert "stopping the failed stack" in result.stderr
     assert "compose.selfhost.yaml down --remove-orphans" in docker_log.read_text(encoding="utf-8")
     assert not (deploy_root / "current").exists()
+
+
+def test_deploy_rejects_prometheus_tsdb_corruption_after_readiness(tmp_path: Path) -> None:
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_docker = fake_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'printf \'%s\\n\' "$*" >> "$DOCKER_LOG"\n'
+        "if [[ ${1:-} == info ]]; then printf '%s\\n' \"$DOCKER_ROOT\"; exit 0; fi\n"
+        "if [[ $* == *' ps -q prometheus'* ]]; then\n"
+        "  [[ -f \"$DOCKER_STATE\" ]] && printf 'prometheus-container\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [[ $* == *' up -d --no-build --remove-orphans'* ]]; then\n"
+        '  touch "$DOCKER_STATE"\n'
+        "  exit 0\n"
+        "fi\n"
+        "if [[ ${1:-} == inspect && $* == *'.State.StartedAt'* ]]; then\n"
+        "  printf '2026-07-24T17:15:16.000000000Z\\n'\n"
+        "  exit 0\n"
+        "fi\n"
+        "if [[ ${1:-} == logs ]]; then\n"
+        "  printf 'Loading on-disk chunks failed\\n' >&2\n"
+        "  exit 0\n"
+        "fi\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    deploy_root = tmp_path / "deploy"
+    _release(deploy_root, "release-1")
+    docker_log = tmp_path / "docker.log"
+    env = {
+        **os.environ,
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "DOCKER_LOG": str(docker_log),
+        "DOCKER_ROOT": str(tmp_path),
+        "DOCKER_STATE": str(tmp_path / "docker.state"),
+        "MIN_FREE_DISK_MB": "1",
+        "HEALTHCHECK_ATTEMPTS": "1",
+        "HEALTHCHECK_INTERVAL_SECONDS": "0",
+    }
+
+    result = subprocess.run(  # noqa: S603
+        [
+            str(PROJECT_ROOT / "scripts" / "deploy_production.sh"),
+            "deploy",
+            str(deploy_root),
+            "release-1",
+            "self-hosted",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+    assert result.returncode != 0
+    assert "failed Prometheus TSDB startup checks" in result.stderr
+    assert not (deploy_root / "current").exists()
+    log = docker_log.read_text(encoding="utf-8")
+    assert log.index("exec -T api") < log.index("logs --since")
+    assert "compose.selfhost.yaml down --remove-orphans" in log
 
 
 def test_failed_rollback_restores_the_active_release(tmp_path: Path) -> None:
@@ -528,6 +593,7 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     deploy = (PROJECT_ROOT / ".github/workflows/deploy.yml").read_text(encoding="utf-8")
     ci = (PROJECT_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     overlay = (PROJECT_ROOT / "compose.selfhost.yaml").read_text(encoding="utf-8")
+    monitoring = (PROJECT_ROOT / "compose.monitoring.production.yaml").read_text(encoding="utf-8")
     actionlint = (PROJECT_ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")
 
     assert "runs-on: [self-hosted, linux, x64, jobradar-production]" in deploy
@@ -547,6 +613,10 @@ def test_primary_deploy_uses_private_self_hosted_ingress() -> None:
     assert "Validate private self-hosted ingress" in ci
     assert '(.services.backup.user == "1000:1000")' in ci
     assert '.services.backup.depends_on.migrate.condition == "service_completed_successfully"' in ci
+    assert '.services.prometheus.depends_on["prometheus-config"].condition' in ci
+    assert 'select(.target == "/etc/prometheus") | .type' in ci
+    assert "prometheus_config:/etc/prometheus:ro" in monitoring
+    assert "condition: service_completed_successfully" in monitoring
     assert '(.services | has("caddy") | not)' in ci
     assert 'all(. == "local")' in ci
     assert "jobradar-production" in actionlint
@@ -569,6 +639,10 @@ def test_deploy_synchronizes_and_verifies_grafana_admin_credentials() -> None:
     assert "grafana cli admin reset-admin-password --password-from-stdin" in script
     assert "http://127.0.0.1:3000/api/user" in script
     assert script.count("sync_grafana_admin_credentials") == 4
+    assert "promtool check config /etc/prometheus/prometheus.yml" in script
+    assert script.count("reload_prometheus_configuration") == 4
+    assert ".State.StartedAt" in script
+    assert "Loading on-disk chunks failed" in script
 
 
 def test_release_images_preserve_source_revision() -> None:

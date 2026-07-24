@@ -37,6 +37,71 @@ compose() {
   docker compose "${files[@]}" "$@"
 }
 
+prometheus_container_id() {
+  compose ps -q prometheus 2>/dev/null || true
+}
+
+prometheus_start_marker() {
+  local container_id
+  container_id=$(prometheus_container_id)
+  [[ -n "$container_id" ]] || return 0
+
+  local started_at
+  started_at=$(docker inspect --format '{{.State.StartedAt}}' "$container_id" 2>/dev/null || true)
+  printf '%s %s' "$container_id" "$started_at"
+}
+
+stop_prometheus_if_running() {
+  local container_id
+  container_id=$(prometheus_container_id)
+  if [[ -n "$container_id" ]]; then
+    compose stop --timeout 60 prometheus
+  fi
+}
+
+stop_legacy_prometheus() {
+  local container_id
+  container_id=$(prometheus_container_id)
+  [[ -n "$container_id" ]] || return 0
+
+  local config_mount_type
+  config_mount_type=$(docker inspect --format \
+    '{{range .Mounts}}{{if eq .Destination "/etc/prometheus"}}{{.Type}}{{end}}{{end}}' \
+    "$container_id")
+  if [[ "$config_mount_type" == "bind" ]]; then
+    echo "Stopping Prometheus before migrating its configuration mount"
+    compose stop --timeout 60 prometheus
+  fi
+}
+
+reload_prometheus_configuration() {
+  compose exec -T prometheus \
+    promtool check config /etc/prometheus/prometheus.yml
+  compose kill -s SIGHUP prometheus >/dev/null
+  sleep 1
+}
+
+validate_prometheus_startup() {
+  local previous_start_marker=${1:-}
+  local current_container_id current_start_marker
+  current_container_id=$(prometheus_container_id)
+  # Internal readiness remains authoritative when a Docker test double cannot
+  # expose container IDs.
+  [[ -n "$current_container_id" ]] || return 0
+
+  local started_at startup_logs
+  started_at=$(docker inspect --format '{{.State.StartedAt}}' "$current_container_id")
+  current_start_marker="$current_container_id $started_at"
+  [[ "$current_start_marker" != "$previous_start_marker" ]] || return 0
+
+  startup_logs=$(docker logs --since "$started_at" "$current_container_id" 2>&1)
+  if [[ "$startup_logs" == *"Loading on-disk chunks failed"* ]]; then
+    echo "Prometheus reported TSDB chunk corruption during startup" >&2
+    printf '%s\n' "$startup_logs" >&2
+    return 1
+  fi
+}
+
 require_free_disk() {
   local path=$1
   local minimum_mb=${MIN_FREE_DISK_MB:-10240}
@@ -144,8 +209,15 @@ restore_previous_or_stop() {
     echo "Restoring $(basename "$previous")" >&2
     cd "$previous"
     set_deployment_mode "$(release_deployment_mode "$previous")"
+    local prometheus_before
+    prometheus_before=$(prometheus_start_marker)
+    stop_prometheus_if_running
     if ! compose up -d --no-build --remove-orphans; then
       echo "Previous release could not be restarted" >&2
+      return 1
+    fi
+    if ! reload_prometheus_configuration; then
+      echo "Previous release Prometheus configuration could not be restored" >&2
       return 1
     fi
     if ! sync_grafana_admin_credentials; then
@@ -154,6 +226,10 @@ restore_previous_or_stop() {
     fi
     if ! wait_for_internal_health; then
       echo "Previous release failed internal health checks" >&2
+      return 1
+    fi
+    if ! validate_prometheus_startup "$prometheus_before"; then
+      echo "Previous release Prometheus could not be restored cleanly" >&2
       return 1
     fi
     activate_release "$deploy_root" "$previous"
@@ -196,8 +272,18 @@ deploy() {
   require_free_disk "$deploy_root"
   require_docker_free_disk
   compose pull
+  local prometheus_before
+  prometheus_before=$(prometheus_start_marker)
+  stop_legacy_prometheus
   if ! compose up -d --no-build --remove-orphans; then
     echo "Release $release_id failed to start" >&2
+    if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
+      echo "Automatic recovery failed" >&2
+    fi
+    return 1
+  fi
+  if ! reload_prometheus_configuration; then
+    echo "Release $release_id failed Prometheus configuration checks" >&2
     if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
       echo "Automatic recovery failed" >&2
     fi
@@ -212,6 +298,13 @@ deploy() {
   fi
   if ! wait_for_internal_health; then
     echo "Release $release_id failed internal health checks" >&2
+    if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
+      echo "Automatic recovery failed" >&2
+    fi
+    return 1
+  fi
+  if ! validate_prometheus_startup "$prometheus_before"; then
+    echo "Release $release_id failed Prometheus TSDB startup checks" >&2
     if ! restore_previous_or_stop "$deploy_root" "$release_dir" "$previous"; then
       echo "Automatic recovery failed" >&2
     fi
@@ -253,8 +346,17 @@ rollback() {
   cd "$previous"
   set_deployment_mode "$(release_deployment_mode "$previous")"
   compose config -q
+  local prometheus_before
+  prometheus_before=$(prometheus_start_marker)
+  stop_prometheus_if_running
   if ! compose up -d --no-build --remove-orphans; then
     echo "Rollback target could not be started" >&2
+    restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
+      echo "Active release recovery failed" >&2
+    return 1
+  fi
+  if ! reload_prometheus_configuration; then
+    echo "Rollback target Prometheus configuration could not be restored" >&2
     restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
       echo "Active release recovery failed" >&2
     return 1
@@ -267,6 +369,12 @@ rollback() {
   fi
   if ! wait_for_internal_health; then
     echo "Rollback target failed internal health checks" >&2
+    restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
+      echo "Active release recovery failed" >&2
+    return 1
+  fi
+  if ! validate_prometheus_startup "$prometheus_before"; then
+    echo "Rollback target Prometheus could not be restored cleanly" >&2
     restore_previous_or_stop "$deploy_root" "$previous" "$current" || \
       echo "Active release recovery failed" >&2
     return 1

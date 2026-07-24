@@ -29,7 +29,7 @@ of this completion claim.
 | MVP data volume | Pass | Operational PostgreSQL contains 2,244 unique jobs: 791 ITViec, 915 TopCV and 538 VietnamWorks |
 | Salary bands | Pass | The salary mart exposes more than the required ten normalized roles |
 | API performance | Pass | Isolated `/api/jobs` k6 run sustained the 100 RPS target with 8.37 ms p95 and 0% HTTP failures |
-| Backend quality | Pass | Ruff, Ruff format, strict mypy and 287 tests pass with 81% coverage; CI enforces at least 70% |
+| Backend quality | Pass | Ruff, Ruff format, strict mypy and 288 tests pass with 81% coverage; CI enforces at least 70% |
 | Analytics | Pass | dbt source freshness passes and `dbt build` completes 32/32 nodes locally and in CI |
 | Frontend | Pass | npm audit, ESLint, TypeScript, production build and three Playwright workflows pass locally, in CI and directly against production |
 | Data collection | Pass in production | ITViec, TopCV and VietnamWorks have completed real batches; the latest scheduled TopCV batch processed 442 jobs with zero errors |
@@ -168,7 +168,7 @@ The following checks were completed on 2026-07-24:
 
 - Ruff lint and formatting over 159 files, plus strict mypy over 105 source
   files;
-- 287 backend/unit/integration tests with 81% coverage and the 70% threshold
+- 288 backend/unit/integration tests with 81% coverage and the 70% threshold
   enforced;
 - 50-example skill benchmark with precision, recall and F1 all equal to 1.0;
 - dbt source freshness and 32/32 build nodes;
@@ -222,7 +222,10 @@ Runtime verification also established:
   the Compose network and every active container uses the bounded `local` log
   driver;
 - Prometheus loaded six rules, Grafana loaded one Prometheus datasource and five
-  dashboards, and the production Grafana credential authenticates successfully;
+  dashboards, and the production Grafana credential authenticates successfully.
+  Production Prometheus configuration is staged through a stable named volume,
+  validated with `promtool`, reloaded without restarting TSDB, and deployment
+  rejects any on-disk chunk replay error from a newly started container;
 - a custom-format backup was created as the unprivileged host UID with mode 600
   and passed `pg_restore --list`; and
 - all three Playwright workflows passed directly against the production URL,

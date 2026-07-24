@@ -88,6 +88,14 @@ on port 8000. Prometheus is at port 9090 and Grafana at port 3001. Replace the
 Grafana credentials in production. Alert rules cover API availability, p95
 latency and server error rate.
 
+Production stages the Prometheus configuration through the
+`prometheus_config` named volume. This keeps the long-running TSDB container
+independent of each release directory's absolute bind-mount path. Deployment
+runs `promtool check config`, reloads Prometheus with `SIGHUP`, and fails closed
+if a newly started container reports an on-disk chunk replay error. The first
+deployment from the legacy bind mount stops Prometheus with a 60-second grace
+period before migrating the mount.
+
 MLflow is part of the main Compose stack at port 5000. The dedicated CPU ML
 worker logs model parameters, the recorded split strategy, evaluation metrics,
 publication-gate status and candidate artifacts there. Its model and artifact

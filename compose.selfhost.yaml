@@ -55,5 +55,8 @@ services:
   prometheus:
     logging: *selfhost-logging
 
+  prometheus-config:
+    logging: *selfhost-logging
+
   grafana:
     logging: *selfhost-logging
