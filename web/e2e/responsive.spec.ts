@@ -23,3 +23,27 @@ test("salary workflow remains usable on mobile", async ({page}) => {
     .toBe(true);
   await page.screenshot({path: "test-results/salary-mobile.png", fullPage: true});
 });
+
+test("mobile navigation keeps the application tracker reachable", async ({page}) => {
+  await page.route("**/api/applications**", (route) =>
+    route.fulfill({status: 401, contentType: "application/json", body: JSON.stringify({detail: "Not authenticated"})}),
+  );
+  await page.route("**/api/auth/refresh", (route) =>
+    route.fulfill({status: 401, contentType: "application/json", body: JSON.stringify({detail: "Not authenticated"})}),
+  );
+  await page.goto("/applications");
+  await expect(page.getByRole("heading", {name: "Theo dõi ứng tuyển"})).toBeVisible();
+  await expect(page.getByText("Đăng nhập để theo dõi ứng tuyển")).toBeVisible();
+  await expect(page.getByRole("navigation", {name: "Điều hướng di động"}).getByRole("link", {name: "Ứng tuyển"})).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", {name: "Mở trang đăng nhập"}).click();
+  await expect(page).toHaveURL(/\/login\?next=%2Fapplications$/);
+  await expect(page.getByRole("heading", {name: "Đăng nhập an toàn"})).toBeVisible();
+  await expect(page.getByLabel("Email")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    )
+    .toBe(true);
+});

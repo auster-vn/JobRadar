@@ -1,9 +1,11 @@
+import asyncio
 import json
 import logging
 import math
 import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from typing import cast
 
 from fastapi import Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
@@ -26,6 +28,11 @@ LAST_SCRAPE_AGE = Gauge(
     ("platform",),
 )
 QUEUE_LENGTH = Gauge("jobradar_celery_queue_length", "Celery queue backlog", ("queue",))
+DEPENDENCY_AVAILABLE = Gauge(
+    "jobradar_dependency_available",
+    "Whether an external dependency was reachable during metrics collection",
+    ("dependency",),
+)
 SALARY_MODEL_MAPE = Gauge("jobradar_salary_model_mape", "Latest salary model MAPE")
 SALARY_MODEL_INTERVAL_COVERAGE = Gauge(
     "jobradar_salary_model_interval_coverage",
@@ -115,42 +122,54 @@ async def metrics_response() -> Response:
         )
         if enabled
     }
-    async with session_factory() as session:
-        JOBS.set(await session.scalar(select(func.count()).select_from(Job)) or 0)
-        ACTIVE_ALERTS.set(
-            await session.scalar(
-                select(func.count()).select_from(JobAlert).where(JobAlert.is_active.is_(True))
-            )
-            or 0
-        )
-        completed_at: dict[str, datetime] = {}
-        if enabled_platforms:
-            rows = await session.execute(
-                select(ScrapeBatch.platform, func.max(ScrapeBatch.completed_at))
-                .where(
-                    ScrapeBatch.status == "completed",
-                    ScrapeBatch.platform.in_(enabled_platforms),
-                )
-                .group_by(ScrapeBatch.platform)
-            )
-            completed_at = {
-                platform: completed for platform, completed in rows if completed is not None
-            }
-        for platform, age in _scrape_ages(
-            completed_at, enabled_platforms, now=datetime.now(UTC)
-        ).items():
-            LAST_SCRAPE_AGE.labels(platform).set(age)
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
     try:
-        for queue in ("alerts", "nlp", "scraping", "ml", "analytics"):
-            QUEUE_LENGTH.labels(queue).set(await redis.llen(queue))
-        raw_evaluation = await redis.get("model:salary:latest_evaluation")
-        if raw_evaluation:
-            evaluation = json.loads(raw_evaluation)
-            if isinstance(evaluation, dict):
-                set_salary_evaluation_metrics(evaluation)
+        async with asyncio.timeout(3), session_factory() as session:
+            JOBS.set(await session.scalar(select(func.count()).select_from(Job)) or 0)
+            ACTIVE_ALERTS.set(
+                await session.scalar(
+                    select(func.count()).select_from(JobAlert).where(JobAlert.is_active.is_(True))
+                )
+                or 0
+            )
+            completed_at: dict[str, datetime] = {}
+            if enabled_platforms:
+                rows = await session.execute(
+                    select(ScrapeBatch.platform, func.max(ScrapeBatch.completed_at))
+                    .where(
+                        ScrapeBatch.status == "completed",
+                        ScrapeBatch.platform.in_(enabled_platforms),
+                    )
+                    .group_by(ScrapeBatch.platform)
+                )
+                completed_at = {
+                    platform: completed for platform, completed in rows if completed is not None
+                }
+            for platform, age in _scrape_ages(
+                completed_at, enabled_platforms, now=datetime.now(UTC)
+            ).items():
+                LAST_SCRAPE_AGE.labels(platform).set(age)
+        DEPENDENCY_AVAILABLE.labels("database").set(1)
     except Exception as exc:
+        DEPENDENCY_AVAILABLE.labels("database").set(0)
+        logger.warning("Could not collect database metrics: %s", exc)
+
+    redis: Redis | None = None
+    try:
+        redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        async with asyncio.timeout(3):
+            for queue in ("alerts", "nlp", "scraping", "ml", "analytics"):
+                length = await cast(Awaitable[int], redis.llen(queue))
+                QUEUE_LENGTH.labels(queue).set(length)
+            raw_evaluation = await redis.get("model:salary:latest_evaluation")
+            if raw_evaluation:
+                evaluation = json.loads(raw_evaluation)
+                if isinstance(evaluation, dict):
+                    set_salary_evaluation_metrics(evaluation)
+        DEPENDENCY_AVAILABLE.labels("cache").set(1)
+    except Exception as exc:
+        DEPENDENCY_AVAILABLE.labels("cache").set(0)
         logger.warning("Could not collect Redis queue metrics: %s", exc)
     finally:
-        await redis.aclose()
+        if redis is not None:
+            await redis.aclose()
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

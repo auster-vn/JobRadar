@@ -5,10 +5,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 PROJECT_ROOT = Path(__file__).parents[2]
 TEST_REVISION = "a" * 40
+pytestmark = pytest.mark.skipif(
+    os.name == "nt",
+    reason="POSIX deployment script execution is validated on the Linux CI runner",
+)
 
 
 def _release(root: Path, release_id: str) -> Path:
@@ -675,11 +680,11 @@ def test_dependency_and_release_image_security_gates_are_enforced() -> None:
     assert "MLFLOW_TRACKING_URI: sqlite:///artifacts/release-mlflow.db" in release
     assert "MLFLOW_ALLOW_FILE_STORE" not in release
     assert 'MLFLOW_SERVER_ENABLE_JOB_EXECUTION: "false"' in compose
-    assert 'UV_VERSION: "0.11.29"' in ci
-    assert 'UV_VERSION: "0.11.29"' in release
+    assert 'UV_VERSION: "0.12.5"' in ci
+    assert 'UV_VERSION: "0.12.5"' in release
     for dockerfile in ("Dockerfile", "Dockerfile.ml"):
         contents = (PROJECT_ROOT / dockerfile).read_text(encoding="utf-8")
-        assert "ARG UV_VERSION=0.11.29" in contents
+        assert "ARG UV_VERSION=0.12.5" in contents
         assert "pip uninstall --yes uv" in contents
     web_dockerfile = (PROJECT_ROOT / "web/Dockerfile").read_text(encoding="utf-8")
     assert web_dockerfile.count("FROM node:24-alpine") == 3

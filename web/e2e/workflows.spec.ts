@@ -57,11 +57,11 @@ test("salary benchmark uses the verified market snapshot", async ({page}) => {
   expect(failures).toEqual([]);
 });
 
-test("candidate can own and erase CV data, then manage an alert", async ({page}) => {
+test("candidate can own CV data, score and track a job, then manage an alert", async ({page}) => {
   const failures = captureBrowserFailures(page);
   const email = `e2e-${Date.now()}@example.com`;
 
-  await page.goto("/profile");
+  await page.goto("/login?next=%2Fprofile");
   await page.getByRole("button", {name: "Chưa có tài khoản? Đăng ký"}).click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Mật khẩu").fill("JobRadar-e2e-password");
@@ -79,6 +79,37 @@ test("candidate can own and erase CV data, then manage an alert", async ({page})
   await expect(page.getByRole("button", {name: "Xóa dữ liệu CV"})).toBeVisible();
   await page.getByRole("button", {name: "Xóa dữ liệu CV"}).click();
   await expect(page.getByText("Đã xóa nội dung CV và vector ngữ nghĩa.")).toBeVisible();
+
+  const jobsResponse = await page.request.get("/api/jobs?limit=1");
+  expect(jobsResponse.ok()).toBe(true);
+  const jobs = (await jobsResponse.json()) as {data: Array<{id: string; title: string}>};
+  expect(jobs.data.length).toBeGreaterThan(0);
+  const job = jobs.data[0];
+  await page.goto(`/jobs/${job.id}`);
+  await expect(page.getByRole("heading", {name: job.title})).toBeVisible();
+
+  const scored = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes(`/api/jobs/${job.id}/score`) &&
+      response.status() === 200,
+  );
+  await page.getByRole("button", {name: "Chấm điểm phù hợp"}).click();
+  await scored;
+  await expect(page.getByRole("heading", {name: "Mức độ phù hợp"})).toBeVisible();
+
+  const tracked = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().includes("/api/applications") &&
+      [200, 201].includes(response.status()),
+  );
+  await page.getByRole("button", {name: "Theo dõi ứng tuyển"}).click();
+  await tracked;
+  await page.goto("/applications");
+  await expect(page.getByRole("link", {name: job.title})).toBeVisible();
+  await page.getByLabel("Trạng thái").selectOption("applied");
+  await expect(page.getByText("Đã cập nhật tiến độ ứng tuyển.")).toBeVisible();
 
   await page.goto("/alerts");
   await page.getByRole("button", {name: "Tạo cảnh báo"}).click();
@@ -102,5 +133,44 @@ test("candidate can own and erase CV data, then manage an alert", async ({page})
   await deleted;
   await expect(page.getByText("Backend Hà Nội")).not.toBeVisible();
   await expectNoHorizontalOverflow(page);
+  await page.getByRole("button", {name: "Đăng xuất"}).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", {name: "Đăng nhập an toàn"})).toBeVisible();
   expect(failures).toEqual([]);
+});
+
+test("job search exposes internal details and the original source", async ({page}) => {
+  const jobId = "00000000-0000-4000-8000-000000000001";
+  await page.route("**/api/jobs?**", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [{
+          id: jobId,
+          title: "Frontend Developer kiểm thử",
+          title_normalized: "Frontend Developer",
+          company: {id: "00000000-0000-4000-8000-000000000002", name: "JobRadar Labs", logo_url: null, company_type: null},
+          platform: "itviec",
+          source_url: "https://itviec.com/mock-job",
+          job_level: "mid",
+          job_type: "full-time",
+          location: ["Ho Chi Minh"],
+          salary_min: "25000000",
+          salary_max: "35000000",
+          salary_currency: "VND",
+          salary_negotiable: false,
+          skills_required: ["React", "TypeScript"],
+          posted_at: new Date().toISOString(),
+        }],
+        pagination: {limit: 20, next_cursor: null, has_more: false, total_count: 1},
+      }),
+    });
+  });
+
+  await page.goto("/jobs");
+  await page.getByPlaceholder("Vai trò, công ty hoặc kỹ năng").fill("Frontend");
+  await page.getByRole("button", {name: "Lọc kết quả"}).click();
+  await expect(page.getByRole("link", {name: "Frontend Developer kiểm thử", exact: true})).toHaveAttribute("href", `/jobs/${jobId}`);
+  await expect(page.getByRole("link", {name: "Mở tin gốc Frontend Developer kiểm thử"})).toHaveAttribute("href", "https://itviec.com/mock-job");
+  await expectNoHorizontalOverflow(page);
 });

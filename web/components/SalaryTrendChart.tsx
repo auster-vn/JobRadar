@@ -1,24 +1,26 @@
 "use client";
 
-import {Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis} from "recharts";
+import {Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis} from "recharts";
 
-const data = [
-  {month: "T2", median: 31.2}, {month: "T3", median: 32.4}, {month: "T4", median: 32.1},
-  {month: "T5", median: 34.0}, {month: "T6", median: 35.3}, {month: "T7", median: 36.1},
-];
+import type {SalaryBand} from "@/lib/types";
 
-export function SalaryTrendChart() {
+export function SalaryTrendChart({data}: {data: SalaryBand[]}) {
+  const chartData = data.slice(0, 6).map((band) => ({
+    label: band.title.length > 14 ? `${band.title.slice(0, 12)}…` : band.title,
+    median: Math.round(band.median / 100_000) / 10,
+    sample_size: band.sample_size,
+  }));
+  if (!chartData.length) return <div className="chart-empty" role="status"><strong>Chưa đủ dữ liệu lương</strong><span>Cần ít nhất ba quan sát công khai cho mỗi phân khúc.</span></div>;
   return (
-    <div className="trend-chart" role="img" aria-label="Xu hướng lương sáu tháng">
+    <div className="trend-chart" role="img" aria-label="Mức lương trung vị theo nhóm vai trò">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{top: 8, right: 8, left: -26, bottom: 0}}>
-          <defs><linearGradient id="salaryFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#df6b4f" stopOpacity=".24" /><stop offset="1" stopColor="#df6b4f" stopOpacity="0" /></linearGradient></defs>
+        <BarChart data={chartData} margin={{top: 8, right: 8, left: -20, bottom: 0}}>
           <CartesianGrid stroke="#e8e8e4" vertical={false} />
-          <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fontSize: 11, fill: "#686b67"}} />
-          <YAxis domain={[28, 40]} axisLine={false} tickLine={false} tick={{fontSize: 11, fill: "#8b8d89"}} unit="M" />
+          <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{fontSize: 10, fill: "#686b67"}} />
+          <YAxis axisLine={false} tickLine={false} tick={{fontSize: 11, fill: "#8b8d89"}} unit="M" />
           <Tooltip contentStyle={{borderRadius: 6, border: "1px solid #dfe2dc", fontSize: 12}} formatter={(value) => [`${value}M`, "Trung vị"]} />
-          <Area type="monotone" dataKey="median" stroke="#c94d32" strokeWidth={2.2} fill="url(#salaryFill)" />
-        </AreaChart>
+          <Bar dataKey="median" name="Lương trung vị" fill="#c94d32" radius={[3, 3, 0, 0]} maxBarSize={36} />
+        </BarChart>
       </ResponsiveContainer>
     </div>
   );

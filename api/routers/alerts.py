@@ -2,9 +2,10 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.core.config import get_settings
 from api.core.database import get_session
 from api.core.security import get_current_user
 from api.models import AlertEvent, JobAlert, User
@@ -26,6 +27,11 @@ async def _owned_alert(session: AsyncSession, user_id: uuid.UUID, alert_id: uuid
 
 @router.post("", response_model=AlertResponse, status_code=status.HTTP_201_CREATED)
 async def create_alert(payload: AlertCreate, user: CurrentUser, session: Session) -> AlertResponse:
+    alert_count = await session.scalar(
+        select(func.count(JobAlert.id)).where(JobAlert.user_id == user.id)
+    )
+    if (alert_count or 0) >= get_settings().max_alerts_per_user:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Alert limit reached")
     alert = JobAlert(user_id=user.id, **payload.model_dump())
     session.add(alert)
     await session.commit()

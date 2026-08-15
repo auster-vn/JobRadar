@@ -3,17 +3,9 @@
 import {Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis} from "recharts";
 import type {SkillDemand} from "@/lib/types";
 
-const fallback = [
-  {skill: "Python", job_count: 184, demand_rank: 1, mom_growth_pct: 12.4},
-  {skill: "Java", job_count: 163, demand_rank: 2, mom_growth_pct: 6.8},
-  {skill: "React", job_count: 151, demand_rank: 3, mom_growth_pct: 9.2},
-  {skill: "AWS", job_count: 124, demand_rank: 4, mom_growth_pct: 14.1},
-  {skill: "SQL", job_count: 117, demand_rank: 5, mom_growth_pct: 3.7},
-  {skill: "Docker", job_count: 103, demand_rank: 6, mom_growth_pct: 7.4},
-];
-
 export function SkillChart({data}: {data: SkillDemand[]}) {
-  const chartData = data.length ? data.slice(0, 6) : fallback;
+  const chartData = data.slice(0, 6);
+  if (!chartData.length) return <div className="chart-empty" role="status"><strong>Chưa đủ dữ liệu kỹ năng</strong><span>Biểu đồ sẽ xuất hiện sau khi nguồn việc làm được đồng bộ.</span></div>;
   return (
     <div className="chart-frame" role="img" aria-label="Nhu cầu kỹ năng">
       <ResponsiveContainer width="100%" height="100%">

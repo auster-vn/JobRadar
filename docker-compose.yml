@@ -1,0 +1,6 @@
+# Compatibility entrypoint for tooling that still expects docker-compose.yml.
+# Docker Compose prefers compose.yaml automatically; both commands describe the same stack:
+#   docker compose up --build
+#   docker compose -f docker-compose.yml up --build
+include:
+  - path: compose.yaml

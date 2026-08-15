@@ -1,5 +1,12 @@
 .env
+.env.*
+!.env.example
+!.env.*.example
 .venv/
+.python/
+.tools/
+.uv-cache/
+.npm-cache/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -17,6 +24,8 @@ web/.next/
 web/out/
 web/test-results/
 web/*.tsbuildinfo
+.vercel/
+.supabase/
 analytics/target/
 analytics/logs/
 analytics/dbt_packages/
@@ -30,3 +39,11 @@ infra/terraform/*.tfplan
 infra/terraform/*.tfstate
 infra/terraform/*.tfstate.*
 infra/terraform/crash.log
+*.pem
+*.key
+*.p12
+*.pfx
+*.sql.gz
+*.dump
+*.backup
+secrets/

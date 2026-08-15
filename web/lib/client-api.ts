@@ -1,5 +1,3 @@
-import {publicApiBase} from "./api";
-
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -23,15 +21,44 @@ function errorMessage(detail: unknown) {
   return "Yêu cầu không thành công";
 }
 
+let refreshRequest: Promise<boolean> | null = null;
+
+function refreshSession() {
+  if (!refreshRequest) {
+    refreshRequest = fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+      signal: AbortSignal.timeout(10_000),
+    })
+      .then((response) => response.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshRequest = null;
+      });
+  }
+  return refreshRequest;
+}
+
+function mayRefresh(path: string) {
+  return ![
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/refresh",
+  ].includes(path);
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const response = await fetch(`${publicApiBase}${path}`, {
+  const response = await fetch(path, {
     ...init,
     credentials: "include",
-    headers: init.body instanceof FormData ? init.headers : {"Content-Type": "application/json", ...init.headers},
+    headers:
+      init.body instanceof FormData
+        ? init.headers
+        : {"Content-Type": "application/json", ...init.headers},
+    signal: init.signal ?? AbortSignal.timeout(20_000),
   });
-  if (response.status === 401 && retry && path !== "/api/auth/refresh") {
-    const refreshed = await fetch(`${publicApiBase}/api/auth/refresh`, {method: "POST", credentials: "include"});
-    if (refreshed.ok) return apiFetch<T>(path, init, false);
+  if (response.status === 401 && retry && mayRefresh(path)) {
+    if (await refreshSession()) return apiFetch<T>(path, init, false);
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null) as {detail?: unknown} | null;

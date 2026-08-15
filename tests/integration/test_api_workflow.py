@@ -29,12 +29,14 @@ async def test_authenticated_user_workflow(monkeypatch: pytest.MonkeyPatch) -> N
         assert (await client.get("/health")).status_code == 200
         assert (await client.get("/health/ready")).status_code == 200
         assert (await client.get("/api/jobs?limit=5")).status_code == 200
+        assert (await client.get("/jobs?limit=5")).status_code == 200
         topcv_jobs = await client.get("/api/jobs?platform=topcv&limit=5")
         assert topcv_jobs.status_code == 200
         assert topcv_jobs.json()["data"]
         assert all(job["platform"] == "topcv" for job in topcv_jobs.json()["data"])
         assert (await client.get("/api/jobs?platform=unsupported")).status_code == 422
         jobs = (await client.get("/api/jobs?limit=1")).json()["data"]
+        assert jobs
         assert (await client.get("/api/jobs/trending?limit=5")).status_code == 200
         if jobs:
             similar = await client.get(f"/api/jobs/{jobs[0]['id']}/similar?limit=3")
@@ -91,6 +93,39 @@ async def test_authenticated_user_workflow(monkeypatch: pytest.MonkeyPatch) -> N
         assert "Python" in cv.json()["skills"]
         assert cv.json()["has_cv"] is True
         assert embedded_profiles == [cv.json()["user_id"]]
+
+        job_id = jobs[0]["id"]
+        assert (await client.get(f"/jobs/{job_id}")).status_code == 200
+        assert (await client.get("/profile")).status_code == 200
+        scored = await client.post(f"/jobs/{job_id}/score")
+        assert scored.status_code == 200
+        assert scored.json()["job_id"] == job_id
+        assert scored.json()["provider"] == "deterministic"
+        assert 0 <= float(scored.json()["overall_score"]) <= 100
+
+        application = await client.post(
+            "/applications",
+            json={"job_id": job_id, "status": "saved", "notes": "integration flow"},
+        )
+        assert application.status_code == 201
+        application_id = application.json()["id"]
+        replay = await client.post(
+            "/applications",
+            json={"job_id": job_id, "status": "offer", "notes": "ignored replay"},
+        )
+        assert replay.status_code == 200
+        assert replay.json()["id"] == application_id
+        assert replay.json()["status"] == "saved"
+        applications = await client.get("/applications")
+        assert applications.status_code == 200
+        assert any(item["id"] == application_id for item in applications.json()["data"])
+        updated_application = await client.patch(
+            f"/applications/{application_id}",
+            json={"status": "applied", "notes": "submitted"},
+        )
+        assert updated_application.status_code == 200
+        assert updated_application.json()["status"] == "applied"
+        assert updated_application.json()["applied_at"] is not None
 
         user_id = uuid.UUID(cv.json()["user_id"])
         async with session_factory() as security_session:

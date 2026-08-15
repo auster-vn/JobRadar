@@ -13,6 +13,12 @@ rotate cookies and `POST /api/auth/logout` to clear them. `GET /api/auth/session
 returns the current user or `null` without emitting an authentication error and
 is intended for browser bootstrap; `GET /api/auth/me` remains protected.
 
+Production uses `AUTH_MODE=supabase`: the API mediates Supabase email login and
+validates Supabase JWTs. It exposes an OAuth initiation route, but the current
+web app has no `/auth/callback` session handoff, so OAuth is not a supported
+end-to-end flow yet. Local JWT/password auth remains for development and the
+legacy self-hosted path.
+
 ## Public market API
 
 - `GET /api/jobs`: cursor-paginated jobs with title, skill, location, level,
@@ -42,6 +48,10 @@ is intended for browser bootstrap; `GET /api/auth/me` remains protected.
 - `GET /api/profile/skill-gap`: missing skills for a target role and level.
 - `POST|GET /api/alerts`, `PUT|DELETE /api/alerts/{id}`: owned alert rules.
 - `GET /api/alerts/{id}/history`: last 100 durable delivery attempts.
+- `POST /api/jobs/{id}/score`: bounded explainable fit score with a persisted
+  provider/model/input-hash cache.
+- `GET|POST /api/applications`, `PATCH /api/applications/{id}`: owned
+  application tracking and notes.
 
 ## Operations API
 
@@ -51,6 +61,11 @@ readiness and retraining. Never expose this key to browser code. `/health`,
 `/health/ready`, `/version` and `/metrics` support container orchestration and
 monitoring. `/version` includes the immutable `source_revision` embedded in the
 release image so deployment checks can verify the active Git SHA.
+
+`POST /api/cron/daily` is separate from the admin API. It requires
+`X-Cron-Secret`, accepts an 8–128 character `Idempotency-Key`, and queues the
+tracked pipeline only when a Celery worker is provisioned. The default free
+GitHub workflow runs the tracked CLI directly instead.
 
 Anonymous and authenticated clients have separate Redis-backed fixed-window
 limits. A limited response is HTTP 429 and includes `Retry-After`. The limiter

@@ -1,3 +1,6 @@
+import hashlib
+import json
+import logging
 import uuid
 from typing import Annotated, Literal
 
@@ -7,6 +10,7 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from api.core.cache import CacheUnavailable, cache
 from api.core.config import get_settings
 from api.core.database import get_session
 from api.core.pagination import decode_cursor, encode_cursor
@@ -15,6 +19,34 @@ from api.schemas.jobs import JobDetail, JobPage, JobSummary, Pagination
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 Session = Annotated[AsyncSession, Depends(get_session)]
+logger = logging.getLogger(__name__)
+
+
+async def _cache_version() -> str:
+    try:
+        return await cache.get_text("jobs:version") or "1"
+    except CacheUnavailable:
+        return "1"
+
+
+def _cache_key(prefix: str, version: str, values: dict[str, object]) -> str:
+    encoded = json.dumps(values, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return f"jobs:{prefix}:{version}:{hashlib.sha256(encoded).hexdigest()[:24]}"
+
+
+async def _cached(key: str) -> object | None:
+    try:
+        return await cache.get_json(key)
+    except CacheUnavailable:
+        logger.debug("Jobs cache unavailable", exc_info=True)
+        return None
+
+
+async def _store(key: str, value: object) -> None:
+    try:
+        await cache.set_json(key, value, get_settings().cache_ttl_seconds)
+    except CacheUnavailable:
+        logger.debug("Jobs cache unavailable", exc_info=True)
 
 
 @router.get("", response_model=JobPage)
@@ -31,6 +63,25 @@ async def list_jobs(
     limit: Annotated[int, Query(ge=1)] = 20,
 ) -> JobPage:
     limit = min(limit, get_settings().max_jobs_per_page)
+    version = await _cache_version()
+    cache_key = _cache_key(
+        "list",
+        version,
+        {
+            "query": query,
+            "level": level,
+            "location": location,
+            "skill": skill,
+            "platform": platform,
+            "remote": remote,
+            "salary_min": salary_min,
+            "cursor": cursor,
+            "limit": limit,
+        },
+    )
+    cached = await _cached(cache_key)
+    if isinstance(cached, dict):
+        return JobPage.model_validate(cached)
     filters: list[ColumnElement[bool]] = [Job.is_active.is_(True)]
     if query:
         needle = f"%{query.strip()}%"
@@ -67,7 +118,7 @@ async def list_jobs(
         next_cursor = encode_cursor(page_items[-1].posted_at, page_items[-1].id)
 
     total = await session.scalar(select(func.count(Job.id)).where(and_(*count_filters)))
-    return JobPage(
+    page = JobPage(
         data=[JobSummary.model_validate(job) for job in page_items],
         pagination=Pagination(
             limit=limit,
@@ -76,12 +127,19 @@ async def list_jobs(
             total_count=total or 0,
         ),
     )
+    await _store(cache_key, page.model_dump(mode="json"))
+    return page
 
 
 @router.get("/trending", response_model=list[JobSummary])
 async def trending_jobs(
     session: Session, limit: Annotated[int, Query(ge=1, le=50)] = 20
 ) -> list[JobSummary]:
+    version = await _cache_version()
+    cache_key = _cache_key("trending", version, {"limit": limit})
+    cached = await _cached(cache_key)
+    if isinstance(cached, list):
+        return [JobSummary.model_validate(item) for item in cached]
     jobs = list(
         (
             await session.scalars(
@@ -96,7 +154,9 @@ async def trending_jobs(
             )
         ).all()
     )
-    return [JobSummary.model_validate(job) for job in jobs]
+    result = [JobSummary.model_validate(job) for job in jobs]
+    await _store(cache_key, [item.model_dump(mode="json") for item in result])
+    return result
 
 
 @router.get("/{job_id}/similar", response_model=list[JobSummary])
@@ -141,9 +201,16 @@ async def similar_jobs(
 
 @router.get("/{job_id}", response_model=JobDetail)
 async def get_job(job_id: uuid.UUID, session: Session) -> JobDetail:
+    version = await _cache_version()
+    cache_key = _cache_key("detail", version, {"job_id": str(job_id)})
+    cached = await _cached(cache_key)
+    if isinstance(cached, dict):
+        return JobDetail.model_validate(cached)
     job = await session.scalar(
         select(Job).where(Job.id == job_id).options(selectinload(Job.company))
     )
     if not job or not job.is_active:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found")
-    return JobDetail.model_validate(job)
+    result = JobDetail.model_validate(job)
+    await _store(cache_key, result.model_dump(mode="json"))
+    return result

@@ -1,0 +1,70 @@
+services:
+  - type: web
+    name: jobradar-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./docker/backend.Dockerfile
+    dockerContext: .
+    dockerCommand: >-
+      /bin/sh -c 'export SOURCE_REVISION="${RENDER_GIT_COMMIT:-render}";
+      alembic upgrade head &&
+      psql "$(printf "%s" "$MIGRATION_DATABASE_URL" | sed "s|^postgresql+asyncpg://|postgresql://|")"
+      --set=ON_ERROR_STOP=on --file database/schema.sql &&
+      exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT:-10000}"'
+    autoDeployTrigger: checksPass
+    healthCheckPath: /health/ready
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: AUTH_MODE
+        value: supabase
+      - key: LOG_JSON
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: TRUST_PROXY_HEADERS
+        value: "true"
+      - key: RATE_LIMIT_ENABLED
+        value: "true"
+      - key: DATABASE_POOL_SIZE
+        value: "3"
+      - key: DATABASE_MAX_OVERFLOW
+        value: "2"
+      - key: DATABASE_POOL_TIMEOUT_SECONDS
+        value: "10"
+      - key: DATABASE_POOL_RECYCLE_SECONDS
+        value: "300"
+      - key: DATABASE_STATEMENT_CACHE_SIZE
+        value: "0"
+      - key: AI_PROVIDER
+        value: deterministic
+      - key: AI_TOKEN_BUDGET
+        value: "700"
+      - key: SUPABASE_STORAGE_BUCKET
+        value: candidate-files
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: CV_ENCRYPTION_KEY
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: METRICS_TOKEN
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false

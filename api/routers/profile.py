@@ -1,7 +1,8 @@
+import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,12 +14,23 @@ from api.schemas.jobs import JobSummary
 from api.schemas.profile import MatchedJob, ProfileResponse, ProfileUpdate, SkillGapResponse
 from api.services.cv_service import MAX_CV_BYTES, extract_cv
 from api.services.profile_security import set_profile_owner, store_cv_text
+from api.services.storage import (
+    StorageUnavailable,
+    storage_enabled,
+)
+from api.services.storage import (
+    delete_cv as delete_stored_cv,
+)
+from api.services.storage import (
+    upload_cv as upload_stored_cv,
+)
 from nlp.skill_extractor import extract_skills
 from workers.nlp_tasks import embed_profile
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 Session = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
+logger = logging.getLogger(__name__)
 
 
 async def _profile(session: AsyncSession, user_id: uuid.UUID) -> UserProfile:
@@ -58,21 +70,64 @@ async def upload_cv(
     cv_text = await extract_cv(file.filename, data)
     extracted = extract_skills(cv_text)
     profile = await _profile(session, user.id)
+    previous_storage_path = profile.cv_storage_path
+    new_storage_path: str | None = None
+    if storage_enabled():
+        try:
+            new_storage_path = await upload_stored_cv(
+                user.id,
+                file.filename,
+                data,
+                file.content_type,
+            )
+        except StorageUnavailable as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Candidate file storage is temporarily unavailable",
+            ) from exc
     await store_cv_text(session, user.id, cv_text)
     profile.skills = sorted({*profile.skills, *extracted.required, *extracted.nice_to_have})
-    await session.commit()
+    if new_storage_path:
+        profile.cv_storage_path = new_storage_path
+    try:
+        await session.commit()
+    except Exception:
+        if new_storage_path and new_storage_path != previous_storage_path:
+            try:
+                await delete_stored_cv(new_storage_path)
+            except StorageUnavailable:
+                logger.warning("Could not clean up unreferenced CV object")
+        raise
     await session.refresh(profile)
-    embed_profile.delay(str(user.id))
+    if (
+        new_storage_path is not None
+        and previous_storage_path
+        and previous_storage_path != new_storage_path
+    ):
+        try:
+            await delete_stored_cv(previous_storage_path)
+        except StorageUnavailable:
+            logger.warning("Could not remove superseded CV object")
+    try:
+        embed_profile.delay(str(user.id))
+    except Exception:
+        logger.warning("Could not enqueue CV embedding", exc_info=True)
     return ProfileResponse.model_validate(profile)
 
 
 @router.delete("/cv", response_model=ProfileResponse)
 async def delete_cv(user: CurrentUser, session: Session) -> ProfileResponse:
     profile = await _profile(session, user.id)
+    storage_path = profile.cv_storage_path
     profile.cv_text_encrypted = None
     profile.cv_embedding = None
+    profile.cv_storage_path = None
     await session.commit()
     await session.refresh(profile)
+    try:
+        await delete_stored_cv(storage_path)
+    except StorageUnavailable:
+        logger.warning("Could not remove CV object after profile deletion")
     return ProfileResponse.model_validate(profile)
 
 

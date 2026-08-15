@@ -3,7 +3,7 @@ FROM python:3.12-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_COMPILE_BYTECODE=1
 WORKDIR /app
 
-ARG UV_VERSION=0.11.29
+ARG UV_VERSION=0.12.5
 RUN pip install --no-cache-dir "uv==$UV_VERSION"
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --extra ml --extra analytics --no-install-project

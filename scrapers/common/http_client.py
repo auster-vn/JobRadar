@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from dataclasses import dataclass
@@ -5,7 +6,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from scrapers.common.rate_limiter import DomainRateLimiter
 from scrapers.common.robots import RobotsPolicy
@@ -22,6 +22,8 @@ class CachedResponse:
 
 
 class EthicalHttpClient:
+    MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+
     def __init__(
         self,
         user_agent: str,
@@ -64,28 +66,71 @@ class EthicalHttpClient:
             raise RobotsDeniedError(f"robots.txt does not permit collection: {url}")
         await self._limiter.wait(urlparse(url).netloc)
 
-    @retry(
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
+    @classmethod
+    def _validate_response(cls, requested_url: str, response: httpx.Response) -> None:
+        if not cls._same_registered_domain(requested_url, str(response.url)):
+            raise ValueError("Scraper redirect left the approved source domain")
+        content_length = response.headers.get("content-length")
+        if content_length and int(content_length) > cls.MAX_RESPONSE_BYTES:
+            raise ValueError("Scraper response exceeds the configured size limit")
+        if len(response.content) > cls.MAX_RESPONSE_BYTES:
+            raise ValueError("Scraper response exceeds the configured size limit")
+
+    @staticmethod
+    def _retry_delay(response: httpx.Response | None, attempt: int) -> float:
+        if response is not None:
+            retry_after = response.headers.get("retry-after", "")
+            try:
+                return min(30.0, max(0.5, float(retry_after)))
+            except ValueError:
+                pass
+        return min(10.0, float(2**attempt) + 0.25)
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json_payload: dict[str, object] | None = None,
+        policy_url: str | None = None,
+    ) -> httpx.Response:
+        last_error: Exception | None = None
+        for attempt in range(3):
+            response: httpx.Response | None = None
+            try:
+                if policy_url:
+                    if not await self._robots.allowed(policy_url):
+                        raise RobotsDeniedError(
+                            f"robots.txt does not permit collection: {policy_url}"
+                        )
+                    await self._limiter.wait(urlparse(url).netloc)
+                else:
+                    await self.authorize(url)
+                response = await self._client.request(method, url, json=json_payload)
+                if response.status_code == 429 or response.status_code >= 500:
+                    response.raise_for_status()
+                response.raise_for_status()
+                self._validate_response(url, response)
+                return response
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
+                last_error = exc
+                retryable = not isinstance(exc, httpx.HTTPStatusError) or (
+                    exc.response.status_code == 429 or exc.response.status_code >= 500
+                )
+                if not retryable or attempt == 2:
+                    raise
+                await asyncio.sleep(self._retry_delay(response, attempt))
+        assert last_error is not None
+        raise last_error
+
     async def get(self, url: str, *, use_cache: bool = True) -> str:
         cached = self._cache.get(url)
         if use_cache and cached and cached.expires_at > time.monotonic():
             return cached.body
-        await self.authorize(url)
-        response = await self._client.get(url)
-        response.raise_for_status()
+        response = await self._request("GET", url)
         self._cache[url] = CachedResponse(response.text, time.monotonic() + self._cache_ttl)
         return response.text
 
-    @retry(
-        retry=retry_if_exception_type((httpx.TimeoutException, httpx.NetworkError)),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
     async def post_json(
         self,
         url: str,
@@ -101,11 +146,7 @@ class EthicalHttpClient:
         cached = self._cache.get(cache_key)
         if use_cache and cached and cached.expires_at > time.monotonic():
             return json.loads(cached.body)
-        if not await self._robots.allowed(policy_url):
-            raise RobotsDeniedError(f"robots.txt does not permit collection: {policy_url}")
-        await self._limiter.wait(urlparse(url).netloc)
-        response = await self._client.post(url, json=payload)
-        response.raise_for_status()
+        response = await self._request("POST", url, json_payload=payload, policy_url=policy_url)
         body = response.text
         self._cache[cache_key] = CachedResponse(body, time.monotonic() + self._cache_ttl)
         return json.loads(body)

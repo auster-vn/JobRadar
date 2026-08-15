@@ -1,0 +1,90 @@
+name: Daily managed pipeline
+
+on:
+  schedule:
+    # 06:00 Asia/Ho_Chi_Minh (UTC+7).
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-managed-pipeline
+  cancel-in-progress: false
+
+env:
+  UV_VERSION: "0.12.5"
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: production
+    env:
+      APP_ENV: production
+      SOURCE_REVISION: ${{ github.sha }}
+      LOG_JSON: "true"
+      AUTH_MODE: supabase
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      DATABASE_POOL_SIZE: "2"
+      DATABASE_MAX_OVERFLOW: "1"
+      DATABASE_STATEMENT_CACHE_SIZE: "0"
+      REDIS_URL: ${{ secrets.REDIS_URL }}
+      UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+      UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_STORAGE_BUCKET: candidate-files
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      CV_ENCRYPTION_KEY: ${{ secrets.CV_ENCRYPTION_KEY }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      CORS_ORIGINS: ${{ vars.CORS_ORIGINS }}
+      AI_PROVIDER: deterministic
+      AI_TOKEN_BUDGET: "700"
+      ENABLE_ITVIEC_SCRAPER: ${{ vars.ENABLE_ITVIEC_SCRAPER || 'false' }}
+      ENABLE_TOPCV_SCRAPER: ${{ vars.ENABLE_TOPCV_SCRAPER || 'false' }}
+      ENABLE_VIETNAMWORKS_SCRAPER: ${{ vars.ENABLE_VIETNAMWORKS_SCRAPER || 'false' }}
+      SCRAPER_USER_AGENT: ${{ vars.SCRAPER_USER_AGENT || 'JobRadarVN-Research-Bot/1.0' }}
+      SCRAPER_CONTACT_EMAIL: ${{ vars.SCRAPER_CONTACT_EMAIL || 'bot@example.invalid' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      DAILY_RECOMMENDATION_USER_LIMIT: ${{ vars.DAILY_RECOMMENDATION_USER_LIMIT || '50' }}
+      DAILY_RECOMMENDATION_JOB_LIMIT: ${{ vars.DAILY_RECOMMENDATION_JOB_LIMIT || '50' }}
+      DAILY_RECOMMENDATIONS_PER_USER: ${{ vars.DAILY_RECOMMENDATIONS_PER_USER || '5' }}
+      DAILY_RECOMMENDATION_MIN_SCORE: ${{ vars.DAILY_RECOMMENDATION_MIN_SCORE || '65' }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          version: ${{ env.UV_VERSION }}
+
+      - name: Install bounded pipeline dependencies
+        run: uv sync --frozen --extra scraping
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps --only-shell chromium
+
+      - name: Apply database migrations and Supabase policies
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run alembic upgrade head
+          psql_url="${MIGRATION_DATABASE_URL/postgresql+asyncpg:/postgresql:}"
+          psql "$psql_url" --set=ON_ERROR_STOP=on --file database/schema.sql
+
+      - name: Set daily idempotency key
+        shell: bash
+        run: echo "PIPELINE_IDEMPOTENCY_KEY=daily:$(date -u +%F)" >> "$GITHUB_ENV"
+
+      - name: Run tracked daily pipeline
+        run: uv run python -m scripts.run_daily_pipeline

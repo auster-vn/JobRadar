@@ -1,4 +1,7 @@
-# Operations
+# Legacy self-hosted operations
+
+> This runbook covers the optional multi-service Docker/Tailscale/Hetzner stack.
+> The primary free-tier SaaS runbook is [OPERATIONS.md](OPERATIONS.md).
 
 ## Start and migrate
 

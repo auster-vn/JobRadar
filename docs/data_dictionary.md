@@ -9,12 +9,18 @@ stored as timezone-aware values. Salary amounts are monthly VND after ingestion.
 | `companies` | normalized company | Canonical employer identity and metadata |
 | `jobs` | source + source job ID | Searchable normalized listing |
 | `job_embeddings` | job | 384-dimensional semantic vector with model provenance |
-| `users` | account | Credentials and notification routing; private |
-| `user_profiles` | user | Skills, preferences and pgcrypto-encrypted CV text; private |
+| `users` | account | App projection of local or Supabase Auth identity; private |
+| `user_profiles` | user | Skills, preferences, encrypted CV text, and private Storage path |
 | `salary_observations` | source record | Provenance-pinned salary samples; never shown as live jobs |
 | `job_alerts` | alert rule | User-owned match and delivery configuration |
 | `alert_events` | alert + job | Idempotent delivery status and error history |
 | `scrape_batches` | source run | Started/completed time and ingestion counters |
+| `applications` | user + job | Candidate application status, notes, and applied time |
+| `job_scores` | user + job + provider/model/input hash | Cached explainable fit score |
+| `pipeline_runs` | idempotency key | Tracked scheduled/operational pipeline result |
+| `user_settings` | user | AI budget/provider and notification preferences |
+| `notifications` | user notification | In-app/external delivery state and payload |
+| `audit_logs` | audit event | Append-only user/domain security trail |
 
 ## Important job fields
 

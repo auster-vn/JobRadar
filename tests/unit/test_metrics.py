@@ -2,6 +2,8 @@ import math
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
+import pytest
+
 from api.core.metrics import (
     SALARY_DATA_CANONICAL_ROWS,
     SALARY_DATA_DISTINCT_MONTHS,
@@ -11,6 +13,7 @@ from api.core.metrics import (
     SALARY_MODEL_MAPE,
     SALARY_MODEL_PUBLISHED,
     _scrape_ages,
+    metrics_response,
     set_salary_evaluation_metrics,
 )
 
@@ -61,3 +64,40 @@ def test_scrape_ages_ignores_disabled_sources_and_tracks_success() -> None:
     )
 
     assert ages == {"itviec": 10_800}
+
+
+class _UnavailableSession:
+    async def __aenter__(self) -> None:
+        raise RuntimeError("database unavailable")
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+class _UnavailableRedis:
+    async def llen(self, queue: str) -> int:
+        raise RuntimeError(f"cache unavailable for {queue}")
+
+    async def aclose(self) -> None:
+        return None
+
+
+@pytest.mark.asyncio
+async def test_metrics_response_remains_available_during_dependency_outage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "api.core.metrics.session_factory",
+        lambda: _UnavailableSession(),
+    )
+    monkeypatch.setattr(
+        "api.core.metrics.Redis.from_url",
+        lambda *args, **kwargs: _UnavailableRedis(),
+    )
+
+    response = await metrics_response()
+    body = bytes(response.body).decode()
+
+    assert response.status_code == 200
+    assert 'jobradar_dependency_available{dependency="database"} 0.0' in body
+    assert 'jobradar_dependency_available{dependency="cache"} 0.0' in body

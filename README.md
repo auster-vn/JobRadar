@@ -1,383 +1,331 @@
 # JobRadar VN
 
 [![CI](https://github.com/auster-vn/JobRadar/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/auster-vn/JobRadar/actions/workflows/ci.yml)
-[![Release](https://github.com/auster-vn/JobRadar/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/auster-vn/JobRadar/actions/workflows/release.yml)
-[![Deploy](https://github.com/auster-vn/JobRadar/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/auster-vn/JobRadar/actions/workflows/deploy.yml)
+[![Daily pipeline](https://github.com/auster-vn/JobRadar/actions/workflows/daily-pipeline.yml/badge.svg?branch=main)](https://github.com/auster-vn/JobRadar/actions/workflows/daily-pipeline.yml)
 
-Vietnamese technology job-market intelligence built around traceable data,
-deterministic normalization, and explicit release gates.
+JobRadar is a Vietnamese technology-job intelligence and candidate workspace.
+It combines normalized job discovery, private candidate profiles, application
+tracking, explainable fit scoring, salary evidence, and alerts in one system.
 
-JobRadar VN collects permitted public job postings, normalizes titles, skills,
-experience, and disclosed salaries, then serves job discovery, market analytics,
-salary benchmarks, matching, and alerts through a FastAPI API and a Vietnamese
-Next.js dashboard.
+The primary deployment is designed for low-cost managed infrastructure:
+Vercel, a Render free web service, Supabase Postgres/Auth/Storage, Upstash Redis,
+and a GitHub Actions daily worker. The established multi-service Docker,
+analytics, MLflow, Prometheus/Grafana, and private-cloud deployment remains
+available as an optional advanced path.
 
-> **Project status:** production-ready for the private single-operator target.
-> A revision is accepted only after CI, release retraining, all three immutable
-> image builds and security reports, self-hosted deployment, migration, health
-> checks, private HTTPS smoke, backup verification, and production browser E2E
-> pass for that same revision. The published salary model has 11.88% MAPE
-> against the fixed 15% maximum with `data_readiness=true`. Production is
-> tailnet-only at <https://jobradar-production.tail92479f.ts.net>. See the
-> [completion audit](docs/completion_audit.md) for measured evidence and the
-> workflow badges above for current `main`.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https%3A%2F%2Fgithub.com%2Fauster-vn%2FJobRadar)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fauster-vn%2FJobRadar&env=API_INTERNAL_URL%2CNEXT_PUBLIC_API_URL)
 
-## Capabilities
+Deploy the API first so its Render URL can be supplied to Vercel. The buttons
+still require your own provider accounts and secret values; no credentials are
+embedded in the repository.
 
-| Area | What is implemented |
-|---|---|
-| Job discovery | Cursor-paginated search with title, skill, location, level, salary, and source filters |
-| Data collection | Robots-aware, fail-closed adapters for ITViec, TopCV, VietnamWorks, and the official LinkedIn API path; scheduled production collection is enabled for the three reviewed sources |
-| NLP | Bilingual title normalization, experience parsing, salary normalization, and a versioned 3,336-entry skill taxonomy |
-| Market intelligence | Hiring trends, skill demand, salary bands, company activity, and dbt-backed analytics marts |
-| Personalization | Encrypted CV extraction, pgvector similarity, deterministic skill matching, and role-level skill-gap analysis |
-| Salary intelligence | Observed market quantiles plus a leakage-safe quantile model that is served only after publication gates pass |
-| Alerts | Owned alert rules, scheduled matching, durable delivery history, and optional email or Telegram delivery |
-| Operations | Prometheus metrics, Grafana dashboards, MLflow tracking, backups, rate limiting, health probes, and rollback-aware CD |
+## Product features
 
-## Measured Status
+- Responsive job search, filtering, detail pages, and salary insights
+- Email/password authentication mediated through Supabase Auth
+- Tenant-isolated candidate profiles and private CV storage
+- Application tracking from saved through offer/rejected/withdrawn states
+- Explainable per-user job scores with persistent input-hash caching
+- Deterministic free scoring plus OpenAI, DeepSeek, OpenRouter, Gemini, and
+  local Ollama adapters
+- Configurable job alerts with email/Telegram delivery history
+- Bounded, opt-in source ingestion with normalized results and failure isolation
+- Pipeline, notification, and security audit records
+- Health/readiness endpoints, structured logs, Prometheus metrics, rate limits,
+  and cache fallbacks
+- Alembic migrations, Supabase RLS/Storage policy reconciliation, CI security
+  scans, browser tests, and an 80% backend coverage gate
 
-The repository distinguishes implemented behavior from production claims.
-Current acceptance results are recorded in
-[`docs/completion_audit.md`](docs/completion_audit.md).
-
-| Gate | Result |
-|---|---:|
-| Backend unit and integration tests | 288 passed |
-| Combined API, NLP, scraper, and ML coverage | 81% |
-| dbt build | 32/32 passed |
-| Isolated `/api/jobs` load test | 100 RPS target, 8.37 ms p95, 0% HTTP failures |
-| Frontend E2E | 3 Playwright workflows passed in CI and directly against production on desktop/mobile paths |
-| Salary publication | Pass in CI, release and production: 11.88% MAPE vs. 15% maximum; readiness pass |
-| Dependency security | Python audit and npm audit report zero known dependency vulnerabilities |
-| Release image security | Every image publishes a Trivy JSON artifact; secrets and every remediable High/Critical finding fail release |
-| GitHub CI | The [CI workflow](https://github.com/auster-vn/JobRadar/actions/workflows/ci.yml) must pass every job for the release SHA |
-| Release model and images | The [Release workflow](https://github.com/auster-vn/JobRadar/actions/workflows/release.yml) must pass at the same SHA |
-| Live production deployment | The [Deploy workflow](https://github.com/auster-vn/JobRadar/actions/workflows/deploy.yml) must pass private smoke at the Tailscale URL |
+Job scores are advisory and do not make hiring decisions. Scrapers are disabled
+until an operator reviews each source's terms and robots policy.
 
 ## Architecture
 
-JobRadar is a modular monolith deployed as independently executable web, API,
-worker, analytics, and ML processes. PostgreSQL is the durable source of truth;
-Redis holds disposable queue and cache state.
-
 ```mermaid
 flowchart LR
-    S[Permitted job sources] --> C[Source adapters]
-    B[Celery Beat] --> C
-    C --> P[(PostgreSQL 16 + pgvector)]
-    C --> Q[Celery workers]
-    Q --> P
-    P --> D[dbt models]
-    D --> P
-    P --> A[FastAPI]
-    R[(Redis 7)] <--> A
-    R <--> Q
-    A --> W[Next.js dashboard]
-    P --> M[ML worker]
-    M --> F[MLflow]
-    M --> G[Gated model artifacts]
-    G --> I[Internal ML API]
-    I --> A
-    A --> O[Prometheus / Grafana]
-    Q --> O
+  B[Browser] --> W[Vercel: Next.js]
+  W -->|HTTPS /api| A[Render: FastAPI]
+  A --> DB[(Supabase Postgres)]
+  A --> AU[Supabase Auth]
+  A --> ST[Supabase Storage]
+  A --> R[(Upstash Redis)]
+  GH[GitHub Actions<br/>06:00 Vietnam time] --> DB
+  GH --> R
+  GH --> SRC[Reviewed sources]
+  GH --> MSG[Email / Telegram]
 ```
 
-The detailed runtime flow, security boundaries, and architectural decisions are
-documented in [`docs/architecture.md`](docs/architecture.md).
+The API is stateless. PostgreSQL and Storage are authoritative; Redis is
+disposable cache/rate-limit/optional queue state. The free scheduled path runs a
+tracked CLI in GitHub Actions, so it does not depend on an always-on Celery
+worker. A protected queue endpoint is available for deployments that provision
+continuous worker capacity.
 
-## Technology Stack
+### Technology
 
-| Layer | Technologies |
-|---|---|
-| Web | Node.js 24 LTS, Next.js 16, React 19, TypeScript 5, Recharts, Playwright |
-| API | Python 3.12+, FastAPI, Pydantic, SQLAlchemy async, Alembic |
-| Storage | PostgreSQL 16, pgvector HNSW, pgcrypto, Redis 7 |
-| Data and orchestration | Celery, dbt-postgres, Prefect-compatible flows, allowlisted Playwright rendering |
-| NLP and ML | deterministic parsers, Sentence Transformers, XGBoost quantile regression, MLflow |
-| Observability | Prometheus, Grafana, structured logs, health/readiness probes |
-| Delivery | Docker Compose, GitHub Actions, GHCR, a repository-scoped self-hosted runner, and private Tailscale Serve ingress |
+| Layer | Stack |
+| --- | --- |
+| Web | Next.js 16, React 19, TypeScript, Recharts, Playwright |
+| API | Python 3.12, FastAPI, Pydantic, async SQLAlchemy |
+| Data | PostgreSQL 16, pgvector, Alembic, Supabase RLS |
+| Cache/queue | Redis/Upstash, optional Celery |
+| Automation | GitHub Actions daily CLI and CI/CD |
+| Analytics/ML | dbt, sentence-transformers, XGBoost, MLflow (optional) |
+| Observability | JSON logs, health/readiness, Prometheus metrics |
 
-## Quick Start
+## Managed deployment
 
-### Prerequisites
+Follow [DEPLOYMENT.md](DEPLOYMENT.md). In short:
 
-- Docker 24+ with Docker Compose v2
-- At least 8 GB RAM recommended for the complete local stack
-- `uv` and Node.js 24 only when running services outside Docker
+1. Create Supabase and copy transaction-pooler/runtime plus
+   direct/session-pooler migration URLs.
+2. Create Upstash Redis and copy its TLS TCP URL.
+3. deploy `render.yaml`; startup applies Alembic and the Supabase Auth/RLS/
+   Storage layer;
+4. deploy root `vercel.json` with both `API_INTERNAL_URL` and
+   `NEXT_PUBLIC_API_URL` pointing to Render;
+5. configure the GitHub `production` environment and manually test the daily
+   workflow;
+6. add the final Vercel origin to Render CORS and Supabase redirect settings.
 
-### Start the application
+The repository contains no live cloud URL and makes no claim that a particular
+fork is currently deployed. Readiness must be proven against the operator's
+accounts.
+
+## Local development
+
+### Docker
+
+Prerequisite: Docker Desktop or Docker Engine with Compose v2.
 
 ```bash
 cp .env.example .env
-docker compose up --build -d
-docker compose ps
+docker compose up --build
 ```
 
-The one-shot migration and salary-data services must exit successfully before
-the API and workers start. Verify readiness with:
+`compose.yaml` is the canonical development stack.
+`docker-compose.yml` is a compatibility entrypoint and includes the same file.
+The full stack includes PostgreSQL, Redis, API/web, workers, analytics/ML
+services, and seeded salary data, so its first build is intentionally larger
+than the managed API image.
+
+For the application-facing subset:
 
 ```bash
-curl --fail http://localhost:8000/health/ready
+docker compose up --build db redis migrate salary-data api web
 ```
 
-| Service | URL |
-|---|---|
-| Dashboard | <http://localhost:3000> |
-| API documentation | <http://localhost:8000/docs> |
-| MLflow | <http://localhost:5000> |
+Open:
 
-Load clearly labeled development data when the UI needs a local fixture:
+- Web: <http://localhost:3000>
+- API docs: <http://localhost:8000/docs>
+- Readiness: <http://localhost:8000/health/ready>
+
+Stop without deleting volumes:
 
 ```bash
-docker compose exec api python scripts/seed_demo.py
+docker compose down
 ```
 
-Demo rows are never valid evidence for scraper, salary-model, or performance
-readiness gates.
+### Native backend
 
-### Collect operational data
-
-The operational salary input is disclosed compensation from permitted job
-postings collected by the source adapters. It is not a dataset that an operator
-must supply manually. Six provenance-pinned derivatives provide 3,208 unique
-observations from VietJobs, TopCV and VietnamWorks, including a 179-record TopCV
-cohort frozen for publication evaluation. They retain only source-supplied or
-adapter-resolved record dates and never expand a coverage range into invented
-monthly observations.
-
-After reviewing the current source policy, enable only the approved adapters in
-`.env`. For a workstation that must accumulate operational observations across
-host and Docker restarts, start the stack with the collector overlay:
+Prerequisites: Python 3.12, uv, PostgreSQL with pgvector, and Redis.
 
 ```bash
-# Set only reviewed sources to true in .env and use a monitored contact mailbox.
-# ENABLE_ITVIEC_SCRAPER=true
-# ENABLE_TOPCV_SCRAPER=true
-# ENABLE_VIETNAMWORKS_SCRAPER=true
-# SCRAPER_CONTACT_EMAIL=bot@example.com
-docker compose -f compose.yaml -f compose.collector.yaml up -d
-curl --fail --request POST \
-  --header "X-Admin-Key: $ADMIN_API_KEY" \
-  "http://localhost:8000/api/admin/scrape/trigger?platform=topcv&pages=10"
-```
-
-The overlay applies `restart: unless-stopped` only to long-running services;
-migrations and idempotent salary-data import remain one-shot prerequisites.
-Use `docker compose down` when collection should stop intentionally.
-
-TopCV is fetched with the declared bot identity first. If its public listing
-requires JavaScript or returns managed challenge markup, the adapter uses an
-allowlisted headless Chromium context whose browser-compatible user-agent still
-contains that identity and whose `From` header contains `SCRAPER_CONTACT_EMAIL`.
-Robots authorization and the shared five-second top-level page delay still run
-before every render. The adapter does not use proxies or solve CAPTCHAs and
-fails closed if public cards are unavailable.
-
-Each source posting remains one salary sample even when it is scraped repeatedly.
-A later payload with hidden compensation cannot erase a valid disclosed range,
-and a historical TopCV row is merged with the matching live `platform_job_id`
-instead of becoming a second training sample. Inactive postings remain available
-only to the time-bounded salary dataset.
-Inspect collection batches at `GET /api/admin/scrape/batches` and model coverage
-at `GET /api/admin/ml/data-readiness`.
-
-### Add monitoring
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.monitoring.yaml \
-  up -d
-```
-
-Prometheus is available at <http://localhost:9090> and Grafana at
-<http://localhost:3001>. Replace all default credentials before using a shared
-or production environment.
-
-### Stop the stack
-
-```bash
-docker compose \
-  -f compose.yaml \
-  -f compose.monitoring.yaml \
-  down
-```
-
-Do not add `--volumes` unless deleting local PostgreSQL, Redis, Grafana, MLflow,
-and model state is intentional.
-
-## Development
-
-### Backend
-
-```bash
-uv sync --extra dev --extra analytics --extra ml --extra scraping
-uv run playwright install --only-shell chromium
-docker compose up -d db redis
+cp .env.example .env
+uv sync --frozen --extra dev
 uv run alembic upgrade head
 uv run uvicorn api.main:app --reload
 ```
 
-### Frontend
+### Native frontend
+
+Node.js 24 is required:
 
 ```bash
-cd web
-npm ci
-npm run dev
+npm --prefix web ci
+API_INTERNAL_URL=http://localhost:8000 \
+NEXT_PUBLIC_API_URL=http://localhost:8000 \
+npm --prefix web run dev
 ```
 
-The browser uses same-origin `/api` requests. During local development, Next.js
-proxies those requests to the API configured in `web/next.config.mjs`.
+## Environment contract
 
-## Quality Gates
+`.env.example` is the complete non-secret template. Important groups:
 
-Run the same primary checks enforced by CI:
+| Variables | Purpose |
+| --- | --- |
+| `DATABASE_URL` | async runtime URL; transaction pooler in production |
+| `MIGRATION_DATABASE_URL` | direct/session-pooler URL for Alembic and Supabase SQL |
+| `SUPABASE_URL`, `SUPABASE_KEY` | production Auth project and anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | server-only Storage/admin access |
+| `SUPABASE_JWT_SECRET` | optional legacy HS256 verification |
+| `SUPABASE_STORAGE_BUCKET` | private candidate-file bucket |
+| `REDIS_URL` | TLS Upstash URL in production |
+| `UPSTASH_REDIS_REST_URL/TOKEN` | optional REST cache transport |
+| `JWT_SECRET` | application signing secret; `JWT_SECRET_KEY` is the legacy alias |
+| `ADMIN_API_KEY` | privileged admin endpoints |
+| `CV_ENCRYPTION_KEY` | pgcrypto CV-text encryption passphrase |
+| `CRON_SECRET` | only the optional `/api/cron/*` trigger |
+| `NEXT_PUBLIC_API_URL`, `API_INTERNAL_URL` | browser and SSR/rewrite API origins |
+| `AI_PROVIDER`, `AI_MODEL`, `AI_TOKEN_BUDGET` | provider and cost controls |
+| `DAILY_RECOMMENDATION_*` | bounded users/jobs, top count, and score threshold |
+| provider API keys | optional; configure only providers in use |
+| scraper flags/contact | opt-in source authorization and identity |
+
+Production secrets must be independent values. Never give
+`SUPABASE_SERVICE_ROLE_KEY`, database/Redis credentials, or AI keys a
+`NEXT_PUBLIC_` prefix.
+
+See [AI_PROVIDER.md](AI_PROVIDER.md) for provider-specific configuration and
+fallback behavior.
+
+## Daily automation
+
+The default workflow runs at 23:00 UTC, which is 06:00 in Vietnam:
 
 ```bash
-uv run python scripts/audit_python_dependencies.py
+PIPELINE_IDEMPOTENCY_KEY=daily:2026-08-15 \
+uv run python -m scripts.run_daily_pipeline
+```
+
+It tracks `pipeline_runs`, runs bounded enabled sources with isolation,
+deduplicates/upserts jobs, ranks bounded user/job sets with deterministic
+no-LLM scoring, persists qualifying recommendations as scores/in-app
+notifications, expires stale listings, evaluates alerts, and records details.
+All source flags default to false.
+
+`POST /api/cron/daily` is optional and requires `X-Cron-Secret` plus an
+8–128 character `Idempotency-Key`. It queues Celery work and therefore is not
+used by the free default, which has no continuous worker. It never uses the
+admin key as cron authentication.
+
+## API overview
+
+Canonical REST routes are under `/api`, with compatibility aliases for the
+goal-level paths where applicable:
+
+- `POST /api/auth/register`, `POST /api/auth/login`, and session routes
+- `GET /api/jobs`, `GET /api/jobs/{id}`
+- `POST /api/jobs/{id}/score`
+- `GET|POST|PATCH /api/applications`
+- `GET|PUT /api/profile` and CV upload/delete
+- salary insights, skills, matches, and alerts
+- `GET /health`, `GET /health/ready`, `GET /version`
+- protected `GET /metrics`
+
+Use the generated OpenAPI page at `/docs` or [docs/api.md](docs/api.md) for
+request details.
+
+## Quality gates
+
+Run the same critical checks before opening a pull request:
+
+```bash
+uv sync --frozen --extra dev --extra analytics --extra ml --extra scraping
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy --strict api nlp scrapers workers ml flows scripts
-uv run pytest --cov=api --cov=nlp --cov=scrapers --cov=ml --cov-fail-under=70
+uv run mypy api nlp scrapers workers ml flows scripts
+uv run pytest --cov=api --cov=nlp --cov=scrapers --cov=ml --cov-fail-under=80
 
-DBT_HOST=localhost uv run dbt source freshness \
-  --project-dir analytics --profiles-dir analytics
-DBT_HOST=localhost uv run dbt build \
-  --project-dir analytics --profiles-dir analytics
-
-cd web
-npm audit --audit-level=high
-npm run lint
-npm run typecheck
-npm run build
-npm run test:e2e
+npm --prefix web ci
+npm --prefix web run lint
+npm --prefix web run typecheck
+npm --prefix web run build
 ```
 
-CI also validates migrations, the skill benchmark, Terraform, Compose contracts,
-Prometheus rules, Grafana dashboards, container builds, and the checked-in salary
-evaluation evidence. Release scans every immutable image for secrets and
-High/Critical vulnerabilities and retains the complete Trivy JSON as a workflow
-artifact. A secret, a vulnerability with an available fix, or an unfixed finding
-outside the explicit upstream `affected`/`fix_deferred` states fails release.
-Unfixed vendor findings remain visible in the report and job summary; they are
-not hidden with `continue-on-error` or a scanner ignore flag.
+CI also runs PostgreSQL/Redis integration tests, browser flows, dbt checks,
+Terraform/Compose/manifest validation, dependency audits, a Trivy
+vulnerability/secret/misconfiguration scan, and managed Docker builds.
 
-## API Overview
+## Security notes
 
-The OpenAPI schema is generated at `/openapi.json`; interactive documentation is
-served at `/docs`.
+- Supabase Auth identities are projected into `public.users`; password material
+  is never copied.
+- Private table policies accept `auth.uid()` or the API's transaction-local
+  `app.user_id`, preserving isolation in both access modes.
+- The `candidate-files` bucket is private, limited to 6 MiB and allowlisted
+  MIME types; keys begin with the owning user UUID.
+- CV text stored in PostgreSQL is encrypted with pgcrypto.
+- Production rejects wildcard CORS and unsafe/default/duplicate secrets.
+- API inputs, external AI JSON, source URLs, file types, and sizes are validated.
+- Operational tables are not exposed to anon/authenticated PostgREST roles.
 
-| Scope | Representative endpoints |
-|---|---|
-| Jobs | `GET /api/jobs`, `GET /api/jobs/{id}`, `GET /api/jobs/{id}/similar` |
-| Salary | `GET /api/salary/bands`, `GET /api/salary/benchmark/{title}`, `POST /api/salary/predict` |
-| Analytics | `GET /api/analytics/skills/demand`, `GET /api/analytics/hiring/trends` |
-| Authentication | `POST /api/auth/register`, `POST /api/auth/login`, `POST /api/auth/refresh` |
-| Profile and matching | `PUT /api/profile`, `POST /api/profile/cv`, `GET /api/profile/matching-jobs` |
-| Alerts | `POST /api/alerts`, `PUT /api/alerts/{id}`, `GET /api/alerts/{id}/history` |
-| Operations | `/health/ready`, `/metrics`, and admin-key-protected `/api/admin/*` routes |
+Report a suspected credential leak privately and rotate the credential before
+publishing incident details.
 
-See [`docs/api.md`](docs/api.md) for authentication, pagination, privacy, and
-rate-limit behavior.
+## Troubleshooting
 
-## Salary Model Governance
+### Render starts but readiness is 503
 
-The ML service fails closed. Training writes a candidate artifact, logs the run
-to MLflow, and publishes `artifacts/salary/current` only when all release gates
-pass. The main-branch publication job requires:
+Read the JSON body. Verify the runtime transaction-pooler URL, Upstash TLS URL,
+project pause/quota, database revision, and pool size. `/health` alone is not a
+readiness check.
 
-- finite market-segment-median metrics from a manifest-pinned first-seen holdout
-  with at least 50 supported observations and five distinct segments;
-- MAPE at or below 15%;
-- an automated salary-data readiness report with sufficient monthly and segment
-  coverage; and
-- a 40-character source revision that identifies a real Git commit reachable
-  from the evaluated repository `HEAD`.
+### Vercel calls localhost or returns rewrite errors
 
-The clean-room pool has 3,208 unique observations across six monthly periods,
-1,149 canonical technical training rows, 392 rows in the latest month and eight
-supported training segments. The frozen TopCV cohort contains 179 source IDs;
-69 observations across six benchmark segments qualify for evaluation. MAPE is
-11.88%, readiness passes, and unsupported inference requests still fall back to
-observed market quantiles or the deterministic cold-start response.
+Set both `API_INTERNAL_URL` and `NEXT_PUBLIC_API_URL` for the relevant Vercel
+environment, then redeploy. Do not include a trailing slash.
 
-Release retrains from the pinned snapshots at the release Git SHA, embeds the
-verified bundle in the ML image, installs it at an immutable revision path and
-fails deployment health when that exact artifact cannot load. Full methodology
-and limitations are in the [`salary model card`](docs/salary_model_card.md);
-machine-readable evidence is checked in at
-[`docs/evidence/salary_evaluation.json`](docs/evidence/salary_evaluation.json).
+### Login fails
 
-## Security and Data Policy
+Verify `AUTH_MODE=supabase`, the Supabase URL/anon key, email-provider settings,
+and exact Render CORS origins. The backend exposes an OAuth initiation route,
+but the current web app does not implement `/auth/callback`; OAuth must remain
+disabled until a callback/session handoff is added and tested.
 
-- Source adapters are disabled by default and must pass a current access-policy
-  review before collection is enabled.
-- Shared controls enforce `robots.txt`, a declared research user agent,
-  per-domain throttling, response caching, and fail-closed schema validation.
-- The system stores public job-posting data, not candidate profiles from source
-  platforms.
-- User CV text is encrypted with pgcrypto AES-256, isolated with PostgreSQL RLS,
-  excluded from analytics, and removable through the authenticated API.
-- Passwords use Argon2id; access and refresh tokens are HttpOnly cookies; admin
-  routes require a separate key.
-- Production rejects placeholder secrets and exposes PostgreSQL, Redis, MLflow,
-  and monitoring only on the private Compose network.
-- Python and JavaScript dependencies are audited in CI; release images are
-  scanned with a digest-pinned Trivy image and retain machine-readable reports.
-- The web runtime uses Node.js 24 LTS, removes npm after building, runs as a
-  non-root user, and upgrades Alpine packages before publication.
+### Daily pipeline has no jobs
 
-Historical datasets and taxonomies retain their upstream license assertions and
-provenance; operational derivatives without a published dataset license are
-marked `NOASSERTION`. Review [`docs/third_party.md`](docs/third_party.md) and
-[`licenses/`](licenses/) before redistribution. This repository does not grant
-a project-wide open-source license unless a root `LICENSE` file is added.
+Source flags intentionally default to false. Review source authorization first,
+then set flags/contact variables in the GitHub `production` environment.
+Inspect `pipeline_runs`, `scrape_batches`, and the workflow log.
 
-## Repository Layout
+### CV upload fails
+
+Check the service-role key, bucket policy, UUID object path, 6 MiB limit, and MIME
+allowlist. Do not make the bucket public to work around a policy error.
+
+The full incident and recovery procedures are in
+[docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+## Repository layout
 
 ```text
-api/          FastAPI routers, schemas, services, and security controls
-analytics/    dbt sources, staging models, marts, tests, and freshness rules
-flows/        Orchestration entry points
-infra/        Terraform, cloud-init, Caddy, Prometheus, and Grafana config
-migrations/   Append-only Alembic revisions
-ml/           Salary training, evaluation, serving, embeddings, and matching
-nlp/          Salary, title, experience, and skill normalization
-scrapers/     Source adapters plus shared ethical collection controls
-scripts/      Imports, backfills, validation, backup, and deployment tooling
-tests/        Unit, integration, Playwright, and k6 coverage
-web/          Next.js application
-workers/      Celery schedules and background tasks
+api/                    FastAPI routes, security, models, services
+web/                    Next.js application and browser tests
+migrations/             Alembic application schema
+database/               Supabase Auth/RLS/Storage reconciliation
+scrapers/, nlp/         source adapters and normalization
+workers/, flows/        task and tracked-pipeline orchestration
+analytics/, ml/         optional dbt and salary/NLP workloads
+docker/                 managed backend/frontend images
+infra/                  monitoring and optional Terraform/self-host assets
+.github/workflows/      CI, daily pipeline, release, and legacy deploy automation
 ```
 
-## Deployment
+## Contributing
 
-The primary production target is a single trusted workstation running Docker
-and a repository-scoped GitHub Actions runner. Tailscale Serve terminates HTTPS
-and proxies the dashboard from `127.0.0.1:3000`; the service is available only
-to authenticated devices in the same tailnet, and no database, monitoring, or
-application port is exposed to the LAN or public Internet. GitHub Actions builds
-commit-addressed GHCR images and deploys immutable release directories with
-health checks, private HTTPS smoke testing, and rollback.
+1. Create a focused branch.
+2. Keep secrets and generated/private data out of the repository.
+3. Add or update tests for behavior changes.
+4. Run the relevant quality gates above.
+5. Document environment, migration, API, or operational changes.
+6. Open a pull request and wait for all required checks.
 
-The release pipeline retrained the revision-bound model and published all three
-images for commit `12a5d99b39b9d76c9e2e976d9390485facd5cbff`. The dependent
-self-hosted deployment passed Alembic migration, exact-revision model loading,
-API/ML/monitoring health, private HTTPS smoke, and rollback retention. Direct
-Playwright checks also passed against the live tailnet URL. The Terraform module
-and manual `Deploy Hetzner` workflow remain an optional paid public-host
-fallback. Follow
-[`docs/operations.md`](docs/operations.md) for the complete deployment, backup,
-restore, rotation, and rollback runbook.
+Database changes require an Alembic revision plus a review of Supabase
+RLS/grants. Scraper changes require fixtures, bounded retries/timeouts, stable
+result contracts, and a fresh policy review.
 
 ## Documentation
 
-- [Implementation plan](implementation_plan.md)
+- [Managed deployment](DEPLOYMENT.md)
+- [Managed operations](docs/OPERATIONS.md)
+- [AI providers and cost controls](AI_PROVIDER.md)
+- [Refactor audit and architecture plan](docs/REFACTOR_PLAN.md)
+- [API](docs/api.md)
 - [Architecture](docs/architecture.md)
-- [API contracts](docs/api.md)
 - [Data dictionary](docs/data_dictionary.md)
-- [Operations runbook](docs/operations.md)
 - [Salary model card](docs/salary_model_card.md)
-- [Completion audit](docs/completion_audit.md)
-- [Third-party data and attribution](docs/third_party.md)
+- [Third-party data and licenses](docs/third_party.md)
+- [Legacy self-hosting](docs/SELF_HOSTING.md)

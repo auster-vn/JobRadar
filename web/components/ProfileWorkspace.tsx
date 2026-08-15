@@ -8,6 +8,7 @@ import {
   Trash2,
   UploadCloud,
 } from "lucide-react";
+import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { ApiError, apiFetch } from "@/lib/client-api";
@@ -56,7 +57,6 @@ export function ProfileWorkspace() {
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [message, setMessage] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -89,25 +89,6 @@ export function ProfileWorkspace() {
     const timer = window.setTimeout(() => void loadWorkspace(), 0);
     return () => window.clearTimeout(timer);
   }, []);
-
-  async function authenticate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("");
-    const data = new FormData(event.currentTarget);
-    try {
-      await apiFetch(`/api/auth/${authMode}`, {
-        method: "POST",
-        body: JSON.stringify({
-          email: data.get("email"),
-          password: data.get("password"),
-        }),
-      });
-      setLoading(true);
-      await loadWorkspace();
-    } catch (error) {
-      setMessage((error as Error).message);
-    }
-  }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -184,6 +165,7 @@ export function ProfileWorkspace() {
     setUser(null);
     setProfile(emptyProfile);
     setMatches([]);
+    window.dispatchEvent(new Event("jobradar:auth-changed"));
   }
 
   if (loading)
@@ -196,45 +178,17 @@ export function ProfileWorkspace() {
   if (!user)
     return (
       <section className="auth-layout">
-        <form className="panel auth-form" onSubmit={authenticate}>
+        <div className="panel workspace-state">
+          <Sparkles size={25} />
           <div className="panel-heading">
             <div>
-              <h2>{authMode === "login" ? "Đăng nhập" : "Tạo tài khoản"}</h2>
+              <h2>Đăng nhập để mở hồ sơ</h2>
               <p>Dùng hồ sơ riêng để matching và quản lý cảnh báo.</p>
             </div>
           </div>
-          <label className="field">
-            <span>Email</span>
-            <input name="email" type="email" required autoComplete="email" />
-          </label>
-          <label className="field">
-            <span>Mật khẩu</span>
-            <input
-              name="password"
-              type="password"
-              minLength={authMode === "register" ? 10 : 1}
-              required
-              autoComplete={
-                authMode === "login" ? "current-password" : "new-password"
-              }
-            />
-          </label>
           {message && <p className="form-message error">{message}</p>}
-          <button className="primary-button wide" type="submit">
-            {authMode === "login" ? "Đăng nhập" : "Đăng ký"}
-          </button>
-          <button
-            className="text-button"
-            type="button"
-            onClick={() =>
-              setAuthMode(authMode === "login" ? "register" : "login")
-            }
-          >
-            {authMode === "login"
-              ? "Chưa có tài khoản? Đăng ký"
-              : "Đã có tài khoản? Đăng nhập"}
-          </button>
-        </form>
+          <Link className="primary-button" href="/login?next=%2Fprofile">Đăng nhập hoặc tạo tài khoản</Link>
+        </div>
       </section>
     );
 

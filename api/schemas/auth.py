@@ -24,6 +24,8 @@ class UserResponse(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    user: UserResponse
-    access_token: str
+    user: UserResponse | None = None
+    access_token: str | None = None
     token_type: str = "bearer"  # noqa: S105
+    verification_required: bool = False
+    message: str | None = None

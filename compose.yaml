@@ -36,12 +36,43 @@ services:
     command: alembic upgrade head
     environment: &backend-env
       APP_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_JSON: ${LOG_JSON:-false}
       DATABASE_URL: postgresql+asyncpg://jobradarvn:${DB_PASSWORD:-jobradarvn}@db:5432/jobradarvn
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://jobradarvn:${DB_PASSWORD:-jobradarvn}@db:5432/jobradarvn
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+      DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-5}
+      DATABASE_STATEMENT_CACHE_SIZE: ${DATABASE_STATEMENT_CACHE_SIZE:-0}
       REDIS_URL: redis://redis:6379/0
+      UPSTASH_REDIS_REST_URL: ${UPSTASH_REDIS_REST_URL:-}
+      UPSTASH_REDIS_REST_TOKEN: ${UPSTASH_REDIS_REST_TOKEN:-}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-development-only-secret-change-me}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-development-admin-key}
       CV_ENCRYPTION_KEY: ${CV_ENCRYPTION_KEY:-development-cv-encryption-key-change-me}
+      CRON_SECRET: ${CRON_SECRET:-development-cron-secret-change-me}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-candidate-files}
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-deterministic}
+      AI_MODEL: ${AI_MODEL:-jobradar-deterministic-v1}
+      AI_FALLBACK_PROVIDERS: ${AI_FALLBACK_PROVIDERS:-deterministic}
+      AI_TOKEN_BUDGET: ${AI_TOKEN_BUDGET:-700}
+      DAILY_RECOMMENDATION_USER_LIMIT: ${DAILY_RECOMMENDATION_USER_LIMIT:-50}
+      DAILY_RECOMMENDATION_JOB_LIMIT: ${DAILY_RECOMMENDATION_JOB_LIMIT:-50}
+      DAILY_RECOMMENDATIONS_PER_USER: ${DAILY_RECOMMENDATIONS_PER_USER:-5}
+      DAILY_RECOMMENDATION_MIN_SCORE: ${DAILY_RECOMMENDATION_MIN_SCORE:-65}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       SCRAPER_USER_AGENT: ${SCRAPER_USER_AGENT:-JobRadarVN-Research-Bot/1.0 (+https://jobradarvn.com/bot)}
       SCRAPER_CONTACT_EMAIL: ${SCRAPER_CONTACT_EMAIL:-bot@jobradarvn.com}
       ENABLE_ITVIEC_SCRAPER: ${ENABLE_ITVIEC_SCRAPER:-false}
@@ -197,6 +228,7 @@ services:
     image: ${WEB_IMAGE:-jobradarvn-web:latest}
     environment:
       API_INTERNAL_URL: http://api:8000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
       - "3000:3000"
     depends_on:

@@ -1,12 +1,14 @@
 import re
 import unicodedata
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TypedDict
 
 from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
+from api.core.cache import CacheUnavailable, cache
 from api.core.config import get_settings
 from api.core.database import session_factory
 from api.models import Company, Job, RawJob, ScrapeBatch
@@ -20,6 +22,39 @@ from scrapers.topcv.scraper import TopCVScraper
 from scrapers.vietnamworks.scraper import VietnamWorksScraper
 from workers.async_runner import run_async
 from workers.celery_app import app
+
+
+class ScrapeResult(TypedDict):
+    source: str
+    status: str
+    jobs_found: int
+    errors: list[str]
+    jobs_new: int
+    jobs_updated: int
+
+
+def _result(
+    source: str,
+    status: str,
+    jobs_found: int = 0,
+    errors: list[str] | None = None,
+    *,
+    jobs_new: int = 0,
+    jobs_updated: int = 0,
+) -> ScrapeResult:
+    return {
+        "source": source,
+        "status": status,
+        "jobs_found": jobs_found,
+        "errors": errors or [],
+        "jobs_new": jobs_new,
+        "jobs_updated": jobs_updated,
+    }
+
+
+async def _invalidate_jobs_cache() -> None:
+    with suppress(CacheUnavailable):
+        await cache.set_text("jobs:version", str(datetime.now(UTC).timestamp()), 7 * 86400)
 
 
 def _normalize_company(value: str) -> str:
@@ -147,10 +182,10 @@ async def _upsert_job(item: RawJobValidator) -> tuple[uuid.UUID, bool]:
         return job_id, existing_id is None
 
 
-async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) -> dict[str, Any]:
+async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) -> ScrapeResult:
     settings = get_settings()
     if not settings.enable_itviec_scraper:
-        return {"status": "disabled", "platform": "itviec", "jobs": 0}
+        return _result("itviec", "disabled")
     started = datetime.now(UTC)
     async with session_factory() as session, session.begin():
         batch = ScrapeBatch(platform="itviec", started_at=started, status="running")
@@ -160,6 +195,7 @@ async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) 
     jobs: list[RawJobValidator] = []
     new_count = 0
     processed_count = 0
+    errors: list[str] = []
     try:
         jobs = await ITViecScraper().scrape(
             pages,
@@ -167,23 +203,12 @@ async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) 
             detail_limit=detail_limit,
         )
         for item in jobs:
-            _, created = await _upsert_job(item)
-            new_count += int(created)
-            processed_count += 1
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                update(ScrapeBatch)
-                .where(ScrapeBatch.id == batch_id)
-                .values(
-                    completed_at=datetime.now(UTC),
-                    jobs_found=len(jobs),
-                    jobs_new=new_count,
-                    jobs_updated=len(jobs) - new_count,
-                    status="completed",
-                )
-            )
-        return {"status": "completed", "platform": "itviec", "jobs": len(jobs)}
-    except Exception:
+            try:
+                _, created = await _upsert_job(item)
+                new_count += int(created)
+                processed_count += 1
+            except Exception as exc:
+                errors.append(f"{item.platform_job_id}:{type(exc).__name__}")
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -193,16 +218,49 @@ async def ingest_itviec(pages: int, start_page: int = 1, detail_limit: int = 0) 
                     jobs_found=len(jobs),
                     jobs_new=new_count,
                     jobs_updated=processed_count - new_count,
-                    errors=1,
+                    errors=len(errors),
+                    status="partial" if errors else "completed",
+                )
+            )
+        await _invalidate_jobs_cache()
+        return _result(
+            "itviec",
+            "partial" if errors else "completed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
+    except Exception as exc:
+        errors.append(f"source:{type(exc).__name__}")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ScrapeBatch)
+                .where(ScrapeBatch.id == batch_id)
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=len(errors),
                     status="failed",
                 )
             )
-        raise
+        if processed_count:
+            await _invalidate_jobs_cache()
+        return _result(
+            "itviec",
+            "failed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
 
 
-async def ingest_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
+async def ingest_vietnamworks(max_pages: int = 10) -> ScrapeResult:
     if not get_settings().enable_vietnamworks_scraper:
-        return {"status": "disabled", "platform": "vietnamworks", "jobs": 0}
+        return _result("vietnamworks", "disabled")
     started = datetime.now(UTC)
     async with session_factory() as session, session.begin():
         batch = ScrapeBatch(platform="vietnamworks", started_at=started, status="running")
@@ -212,26 +270,16 @@ async def ingest_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
     jobs: list[RawJobValidator] = []
     new_count = 0
     processed_count = 0
+    errors: list[str] = []
     try:
         jobs = await VietnamWorksScraper().scrape(max_pages=max_pages)
         for item in jobs:
-            _, created = await _upsert_job(item)
-            new_count += int(created)
-            processed_count += 1
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                update(ScrapeBatch)
-                .where(ScrapeBatch.id == batch_id)
-                .values(
-                    completed_at=datetime.now(UTC),
-                    jobs_found=len(jobs),
-                    jobs_new=new_count,
-                    jobs_updated=len(jobs) - new_count,
-                    status="completed",
-                )
-            )
-        return {"status": "completed", "platform": "vietnamworks", "jobs": len(jobs)}
-    except Exception:
+            try:
+                _, created = await _upsert_job(item)
+                new_count += int(created)
+                processed_count += 1
+            except Exception as exc:
+                errors.append(f"{item.platform_job_id}:{type(exc).__name__}")
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -241,16 +289,49 @@ async def ingest_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
                     jobs_found=len(jobs),
                     jobs_new=new_count,
                     jobs_updated=processed_count - new_count,
-                    errors=1,
+                    errors=len(errors),
+                    status="partial" if errors else "completed",
+                )
+            )
+        await _invalidate_jobs_cache()
+        return _result(
+            "vietnamworks",
+            "partial" if errors else "completed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
+    except Exception as exc:
+        errors.append(f"source:{type(exc).__name__}")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ScrapeBatch)
+                .where(ScrapeBatch.id == batch_id)
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=len(errors),
                     status="failed",
                 )
             )
-        raise
+        if processed_count:
+            await _invalidate_jobs_cache()
+        return _result(
+            "vietnamworks",
+            "failed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
 
 
-async def ingest_topcv(max_pages: int = 10) -> dict[str, Any]:
+async def ingest_topcv(max_pages: int = 10) -> ScrapeResult:
     if not get_settings().enable_topcv_scraper:
-        return {"status": "disabled", "platform": "topcv", "jobs": 0}
+        return _result("topcv", "disabled")
     started = datetime.now(UTC)
     async with session_factory() as session, session.begin():
         batch = ScrapeBatch(platform="topcv", started_at=started, status="running")
@@ -260,26 +341,16 @@ async def ingest_topcv(max_pages: int = 10) -> dict[str, Any]:
     jobs: list[RawJobValidator] = []
     new_count = 0
     processed_count = 0
+    errors: list[str] = []
     try:
         jobs = await TopCVScraper().scrape(max_pages=max_pages)
         for item in jobs:
-            _, created = await _upsert_job(item)
-            new_count += int(created)
-            processed_count += 1
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                update(ScrapeBatch)
-                .where(ScrapeBatch.id == batch_id)
-                .values(
-                    completed_at=datetime.now(UTC),
-                    jobs_found=len(jobs),
-                    jobs_new=new_count,
-                    jobs_updated=len(jobs) - new_count,
-                    status="completed",
-                )
-            )
-        return {"status": "completed", "platform": "topcv", "jobs": len(jobs)}
-    except Exception:
+            try:
+                _, created = await _upsert_job(item)
+                new_count += int(created)
+                processed_count += 1
+            except Exception as exc:
+                errors.append(f"{item.platform_job_id}:{type(exc).__name__}")
         async with session_factory() as session, session.begin():
             await session.execute(
                 update(ScrapeBatch)
@@ -289,25 +360,58 @@ async def ingest_topcv(max_pages: int = 10) -> dict[str, Any]:
                     jobs_found=len(jobs),
                     jobs_new=new_count,
                     jobs_updated=processed_count - new_count,
-                    errors=1,
+                    errors=len(errors),
+                    status="partial" if errors else "completed",
+                )
+            )
+        await _invalidate_jobs_cache()
+        return _result(
+            "topcv",
+            "partial" if errors else "completed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
+    except Exception as exc:
+        errors.append(f"source:{type(exc).__name__}")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ScrapeBatch)
+                .where(ScrapeBatch.id == batch_id)
+                .values(
+                    completed_at=datetime.now(UTC),
+                    jobs_found=len(jobs),
+                    jobs_new=new_count,
+                    jobs_updated=processed_count - new_count,
+                    errors=len(errors),
                     status="failed",
                 )
             )
-        raise
+        if processed_count:
+            await _invalidate_jobs_cache()
+        return _result(
+            "topcv",
+            "failed",
+            len(jobs),
+            errors,
+            jobs_new=new_count,
+            jobs_updated=processed_count - new_count,
+        )
 
 
 @app.task(name="workers.scrape_tasks.scrape_itviec")
-def scrape_itviec(pages: int = 25, start_page: int = 1, detail_limit: int = 25) -> dict[str, Any]:
+def scrape_itviec(pages: int = 25, start_page: int = 1, detail_limit: int = 25) -> ScrapeResult:
     return run_async(ingest_itviec(pages, start_page, detail_limit))
 
 
 @app.task(name="workers.scrape_tasks.scrape_vietnamworks")
-def scrape_vietnamworks(max_pages: int = 10) -> dict[str, Any]:
+def scrape_vietnamworks(max_pages: int = 10) -> ScrapeResult:
     return run_async(ingest_vietnamworks(max_pages=max_pages))
 
 
 @app.task(name="workers.scrape_tasks.scrape_topcv")
-def scrape_topcv(max_pages: int = 10) -> dict[str, Any]:
+def scrape_topcv(max_pages: int = 10) -> ScrapeResult:
     return run_async(ingest_topcv(max_pages=max_pages))
 
 

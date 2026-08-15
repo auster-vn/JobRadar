@@ -2,6 +2,11 @@
 
 Audit date: 2026-07-24
 
+> Historical evidence: this report evaluates the earlier private, single-operator
+> self-hosted target. It is not evidence that the managed Vercel/Render/Supabase
+> deployment is live. Use [REFACTOR_PLAN.md](REFACTOR_PLAN.md) and
+> [OPERATIONS.md](OPERATIONS.md) for the current target and verification gates.
+
 This audit maps the executable acceptance criteria in
 [`implementation_plan.md`](../implementation_plan.md) to measured evidence. A
 feature is not considered production-complete because its source code exists;
