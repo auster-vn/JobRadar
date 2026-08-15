@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: application
+    schema: public
+    description: Transactional JobRadar application tables.
+    tables:
+      - name: jobs
+        description: Normalized active and historical job postings.
+        loaded_at_field: updated_at
+        freshness:
+          warn_after: {count: 30, period: hour}
+          error_after: {count: 72, period: hour}
+      - name: companies
+        description: Deduplicated hiring companies.
+      - name: salary_market_data
+        description: Unified live and licensed historical salary observations.

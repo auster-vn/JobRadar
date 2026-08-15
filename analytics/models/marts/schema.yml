@@ -1,0 +1,19 @@
+version: 2
+
+models:
+  - name: mart_salary_bands
+    description: Salary distribution by canonical role, level and location with source periods.
+    columns:
+      - name: title_normalized
+        data_tests: [not_null]
+      - name: median
+        data_tests: [not_null]
+      - name: n_jobs
+        data_tests: [not_null]
+  - name: mart_skill_demand
+    description: Monthly skill demand and month-over-month movement.
+    columns:
+      - name: skill
+        data_tests: [not_null]
+      - name: job_count
+        data_tests: [not_null]

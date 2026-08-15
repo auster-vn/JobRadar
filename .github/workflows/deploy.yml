@@ -1,0 +1,166 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: [self-hosted, linux, x64, jobradar-production]
+    timeout-minutes: 30
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    env:
+      DEPLOY_ROOT: ${{ vars.DEPLOY_ROOT || '/home/cp/.local/share/jobradarvn' }}
+      DOMAIN: ${{ vars.DOMAIN }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+      ADMIN_API_KEY: ${{ secrets.ADMIN_API_KEY }}
+      CV_ENCRYPTION_KEY: ${{ secrets.CV_ENCRYPTION_KEY }}
+      GRAFANA_ADMIN_USER: ${{ secrets.GRAFANA_ADMIN_USER || 'admin' }}
+      GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+      LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SCRAPER_CONTACT_EMAIL: ${{ vars.SCRAPER_CONTACT_EMAIL || 'bot@jobradarvn.com' }}
+      ENABLE_ITVIEC_SCRAPER: ${{ vars.ENABLE_ITVIEC_SCRAPER || 'false' }}
+      ENABLE_TOPCV_SCRAPER: ${{ vars.ENABLE_TOPCV_SCRAPER || 'false' }}
+      ENABLE_VIETNAMWORKS_SCRAPER: ${{ vars.ENABLE_VIETNAMWORKS_SCRAPER || 'false' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - id: release
+        name: Validate deployment inputs and host
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${DOMAIN:?DOMAIN is required}"
+          : "${DB_PASSWORD:?DB_PASSWORD is required}"
+          : "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
+          : "${ADMIN_API_KEY:?ADMIN_API_KEY is required}"
+          : "${CV_ENCRYPTION_KEY:?CV_ENCRYPTION_KEY is required}"
+          : "${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}"
+          (( ${#CV_ENCRYPTION_KEY} >= 32 ))
+          [[ "$DEPLOY_ROOT" == "$HOME/"* ]]
+          [[ "$DEPLOY_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]
+          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+\.ts\.net$ ]]
+          [[ "$ENABLE_ITVIEC_SCRAPER" =~ ^(true|false)$ ]]
+          [[ "$ENABLE_TOPCV_SCRAPER" =~ ^(true|false)$ ]]
+          [[ "$ENABLE_VIETNAMWORKS_SCRAPER" =~ ^(true|false)$ ]]
+          for value in "$DB_PASSWORD" "$JWT_SECRET_KEY" "$ADMIN_API_KEY" \
+            "$CV_ENCRYPTION_KEY" \
+            "$GRAFANA_ADMIN_USER" "$GRAFANA_ADMIN_PASSWORD" \
+            "$LINKEDIN_ACCESS_TOKEN" "$TELEGRAM_BOT_TOKEN" "$SMTP_HOST" \
+            "$SMTP_PORT" "$SMTP_USER" "$SMTP_PASSWORD" \
+            "$SCRAPER_CONTACT_EMAIL"; do
+            [[ "$value" =~ ^[A-Za-z0-9._~@:/+-]*$ ]] || {
+              echo "Deployment values must use URL-safe, newline-free characters" >&2
+              exit 1
+            }
+          done
+          command -v docker tailscale jq >/dev/null
+          docker info >/dev/null
+          tailscale status --json | jq -e --arg dns "$DOMAIN." \
+            '.BackendState == "Running" and .Self.Online and .Self.DNSName == $dns' \
+            >/dev/null
+          echo "DOCKER_CONFIG=$RUNNER_TEMP/jobradar-docker-config" >> "$GITHUB_ENV"
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          echo "image_prefix=ghcr.io/$owner/jobradarvn" >> "$GITHUB_OUTPUT"
+
+      - name: Install immutable release configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_dir="$DEPLOY_ROOT/releases/$RELEASE_SHA"
+          install -d -m 700 "$release_dir"
+          tar -cf - \
+            compose.yaml compose.production.yaml compose.selfhost.yaml \
+            compose.monitoring.yaml compose.monitoring.production.yaml \
+            infra/caddy infra/prometheus infra/grafana \
+            scripts/deploy_production.sh scripts/prune_production_releases.sh \
+            scripts/production_smoke.sh scripts/backup_loop.sh \
+            | tar -xf - -C "$release_dir"
+          # The runner uses UMask=0077. Bind-mounted runtime configuration must
+          # remain readable by the non-root Prometheus, Grafana, and Caddy users.
+          find "$release_dir/infra" -type d -exec chmod 755 {} +
+          find "$release_dir/infra" -type f -exec chmod 644 {} +
+          chmod 644 "$release_dir/scripts/backup_loop.sh"
+          {
+            printf 'BACKEND_IMAGE=%s-backend:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
+            printf 'ML_IMAGE=%s-ml:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
+            printf 'WEB_IMAGE=%s-web:%s\n' '${{ steps.release.outputs.image_prefix }}' "$RELEASE_SHA"
+            printf 'DOMAIN=%s\n' "$DOMAIN"
+            printf 'DB_PASSWORD=%s\n' "$DB_PASSWORD"
+            printf 'JWT_SECRET_KEY=%s\n' "$JWT_SECRET_KEY"
+            printf 'ADMIN_API_KEY=%s\n' "$ADMIN_API_KEY"
+            printf 'CV_ENCRYPTION_KEY=%s\n' "$CV_ENCRYPTION_KEY"
+            printf 'GRAFANA_ADMIN_USER=%s\n' "$GRAFANA_ADMIN_USER"
+            printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$GRAFANA_ADMIN_PASSWORD"
+            printf 'LINKEDIN_ACCESS_TOKEN=%s\n' "$LINKEDIN_ACCESS_TOKEN"
+            printf 'TELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN"
+            printf 'SMTP_HOST=%s\n' "$SMTP_HOST"
+            printf 'SMTP_PORT=%s\n' "$SMTP_PORT"
+            printf 'SMTP_USER=%s\n' "$SMTP_USER"
+            printf 'SMTP_PASSWORD=%s\n' "$SMTP_PASSWORD"
+            printf 'SCRAPER_CONTACT_EMAIL=%s\n' "$SCRAPER_CONTACT_EMAIL"
+            printf 'ENABLE_ITVIEC_SCRAPER=%s\n' "$ENABLE_ITVIEC_SCRAPER"
+            printf 'ENABLE_TOPCV_SCRAPER=%s\n' "$ENABLE_TOPCV_SCRAPER"
+            printf 'ENABLE_VIETNAMWORKS_SCRAPER=%s\n' "$ENABLE_VIETNAMWORKS_SCRAPER"
+            printf 'BACKUP_DIR=%s/backups\n' "$DEPLOY_ROOT"
+            printf 'BACKUP_UID=%s\n' "$(id -u)"
+            printf 'BACKUP_GID=%s\n' "$(id -g)"
+          } > "$release_dir/.env"
+          chmod 600 "$release_dir/.env"
+
+      - id: registry
+        name: Authenticate host to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          install -d -m 700 "$DOCKER_CONFIG"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - id: deploy
+        name: Deploy release
+        shell: bash
+        run: >-
+          bash "$DEPLOY_ROOT/releases/$RELEASE_SHA/scripts/deploy_production.sh"
+          deploy "$DEPLOY_ROOT" "$RELEASE_SHA" self-hosted
+
+      - id: smoke
+        name: Verify private HTTPS production routes
+        if: steps.deploy.outcome == 'success'
+        run: bash scripts/production_smoke.sh "https://$DOMAIN" "$RELEASE_SHA"
+
+      - name: Roll back or stop failed release
+        if: failure() && steps.smoke.outcome == 'failure'
+        run: bash "$DEPLOY_ROOT/current/scripts/deploy_production.sh" abort "$DEPLOY_ROOT"
+
+      - name: Prune old releases
+        if: success()
+        run: bash "$DEPLOY_ROOT/current/scripts/prune_production_releases.sh" "$DEPLOY_ROOT" 5
+
+      - name: Remove registry credentials from host
+        if: always() && steps.registry.outcome == 'success'
+        run: docker logout ghcr.io

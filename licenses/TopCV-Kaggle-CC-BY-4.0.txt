@@ -1,0 +1,14 @@
+TopCV 2026 IT Jobs dataset attribution and change notice
+
+Source: Vietnam IT Jobs Raw Data from TopCV 2026
+Creator: Kaggle user baocgb
+Dataset: https://www.kaggle.com/datasets/baocgb/vietnam-it-jobs-raw-data-from-topcv-2026
+Dataset version: 1 (Kaggle dataset ID 9263561)
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+License URL: https://creativecommons.org/licenses/by/4.0/
+
+JobRadar distributes a modified compact derivative, not the raw dataset. The
+changes filter to disclosed salary rows within 1-200 million VND per month,
+convert documented USD values at 25,000 VND/USD, normalize titles, experience
+and locations, remove URL tracking parameters, and add provenance metadata.
+The supplied per-record posting dates are retained without interpolation.

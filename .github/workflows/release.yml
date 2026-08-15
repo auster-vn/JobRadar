@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+  UV_VERSION: "0.12.5"
+
+jobs:
+  model:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: jobradarvn
+          POSTGRES_USER: jobradarvn
+          POSTGRES_PASSWORD: jobradarvn
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U jobradarvn -d jobradarvn"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://jobradarvn:jobradarvn@localhost:5432/jobradarvn
+      MLFLOW_TRACKING_URI: sqlite:///artifacts/release-mlflow.db
+      SALARY_HOLDOUT_MANIFEST: data/salary_holdout_2026-07-19.json
+      SOURCE_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+          version: ${{ env.UV_VERSION }}
+      - run: uv sync --extra ml
+      - run: uv run alembic upgrade head
+      - name: Import immutable salary snapshots
+        run: >-
+          uv run python scripts/import_salary_snapshot.py
+          data/vietjobs_it_salary_observations.csv
+          data/topcv_2026_it_salary_observations.csv
+          data/topcv_canhphu_2026_salary_observations.csv
+          data/topcv_2026-07-19_it_salary_observations.csv
+          data/topcv_operational_2026-07-18_salary_observations.csv
+          data/vietnamworks_operational_2026-07-18_salary_observations.csv
+      - name: Train and verify release salary model
+        run: uv run python scripts/train_salary_release.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: salary-model-${{ env.RELEASE_SHA }}
+          path: artifacts/salary/current
+          if-no-files-found: error
+          retention-days: 7
+
+  build:
+    needs: model
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: backend
+            context: .
+            file: Dockerfile
+          - image: ml
+            context: .
+            file: Dockerfile.ml
+          - image: web
+            context: web
+            file: web/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: actions/download-artifact@v7
+        if: matrix.image == 'ml'
+        with:
+          name: salary-model-${{ env.RELEASE_SHA }}
+          path: ml/model_seed/current
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: image
+        name: Resolve image name
+        shell: bash
+        run: |
+          owner=${GITHUB_REPOSITORY_OWNER,,}
+          echo "name=ghcr.io/$owner/jobradarvn-${{ matrix.image }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          tags: ${{ steps.image.outputs.name }}:${{ env.RELEASE_SHA }}
+          build-args: SOURCE_REVISION=${{ env.RELEASE_SHA }}
+          cache-from: type=gha,scope=release-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=release-${{ matrix.image }}
+      - id: trivy
+        name: Scan immutable release image
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ env.RELEASE_SHA }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          report="$RUNNER_TEMP/trivy-${{ matrix.image }}.json"
+          echo "report=$report" >> "$GITHUB_OUTPUT"
+          docker run --rm \
+            -e TRIVY_USERNAME \
+            -e TRIVY_PASSWORD \
+            aquasec/trivy@sha256:c6e969c5662a546ad5de4a73c2a6b7a7c627f86d916903e175aa623af5b97ada \
+            image --no-progress --format json --scanners vuln,secret \
+            --severity HIGH,CRITICAL "$IMAGE" > "$report"
+          test -s "$report"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: container-security-${{ matrix.image }}-${{ env.RELEASE_SHA }}
+          path: ${{ steps.trivy.outputs.report }}
+          if-no-files-found: error
+          retention-days: 30
+      - name: Enforce container security policy
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}:${{ env.RELEASE_SHA }}
+        run: >-
+          python3 scripts/enforce_container_security_report.py
+          "${{ steps.trivy.outputs.report }}"
+          --expected-image "$IMAGE"
+          --summary-file "$GITHUB_STEP_SUMMARY"

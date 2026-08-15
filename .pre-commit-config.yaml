@@ -1,0 +1,25 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format check
+        entry: uv run ruff format --check
+        language: system
+        types: [python]
+      - id: skill-taxonomy
+        name: validate skill taxonomy
+        entry: uv run python scripts/validate_skill_taxonomy.py
+        language: system
+        pass_filenames: false
+        files: ^(nlp/skills_taxonomy(\.meta)?\.json|scripts/validate_skill_taxonomy\.py)$
+      - id: skill-extractor-benchmark
+        name: skill extractor quality gate
+        entry: uv run python scripts/evaluate_skill_extractor.py
+        language: system
+        pass_filenames: false
+        files: ^(nlp/|scripts/evaluate_skill_extractor\.py|tests/fixtures/nlp_skill_benchmark\.json)

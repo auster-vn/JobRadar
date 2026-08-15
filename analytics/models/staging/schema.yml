@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_itviec_jobs
+    description: Clean, typed ITViec postings from the application store.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [platform, platform_job_id]
+    columns:
+      - name: job_id
+        data_tests: [unique, not_null]
+      - name: title
+        data_tests: [not_null]
+      - name: posted_at
+        data_tests: [not_null]
+
+  - name: stg_vietnamworks_jobs
+    description: Clean, typed VietnamWorks postings from the application store.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [platform, platform_job_id]
+    columns:
+      - name: job_id
+        data_tests: [unique, not_null]
+      - name: title
+        data_tests: [not_null]
+      - name: posted_at
+        data_tests: [not_null]
+
+  - name: stg_topcv_jobs
+    description: Clean, typed TopCV postings from the application store.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [platform, platform_job_id]
+    columns:
+      - name: job_id
+        data_tests: [unique, not_null]
+      - name: title
+        data_tests: [not_null]
+      - name: posted_at
+        data_tests: [not_null]

@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: JobRadar
+    folder: JobRadar
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

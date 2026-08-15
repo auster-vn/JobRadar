@@ -1,0 +1,1 @@
+"""VietnamWorks public listing adapter."""

@@ -1,0 +1,8 @@
+server_name       = "jobradarvn-production"
+server_type       = "cx33"
+location          = "nbg1"
+deployment_user   = "jobradar"
+ssh_public_key    = "ssh-ed25519 AAAA_REPLACE_ME deployment@example"
+ssh_allowed_cidrs = ["203.0.113.10/32"]
+enable_backups    = true
+protect_server    = true
