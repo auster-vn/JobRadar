@@ -153,3 +153,10 @@ def predict(payload: SalaryPredictionRequest) -> dict[str, int | str]:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
         ) from exc
+
+
+@app.get("/health/ready")
+def ready() -> dict[str, bool | str]:
+    if not model.available:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Published model unavailable")
+    return {"status": "ready", "model_available": True}

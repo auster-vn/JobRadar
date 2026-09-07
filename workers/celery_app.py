@@ -24,7 +24,17 @@ app.conf.update(
     accept_content=["json"],
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
-    broker_transport_options={"priority_steps": list(range(10)), "sep": ":"},
+    broker_pool_limit=settings.celery_broker_pool_limit,
+    broker_connection_retry_on_startup=True,
+    result_expires=settings.celery_result_expires,
+    broker_transport_options={
+        "priority_steps": list(range(10)),
+        "sep": ":",
+        "socket_connect_timeout": settings.redis_socket_timeout,
+        "socket_timeout": settings.redis_socket_timeout,
+    },
+    redis_socket_connect_timeout=settings.redis_socket_timeout,
+    redis_socket_timeout=settings.redis_socket_timeout,
     task_routes={
         "workers.scrape_tasks.*": {
             "queue": "scraping",
@@ -90,3 +100,6 @@ app.conf.update(
         },
     },
 )
+
+if not settings.enable_salary_retraining:
+    app.conf.beat_schedule.pop("retrain-salary", None)

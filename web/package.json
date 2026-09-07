@@ -11,6 +11,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test:proxy": "node --test --test-isolation=none tests/proxy.test.mjs",
     "test:e2e": "playwright test"
   },
   "dependencies": {

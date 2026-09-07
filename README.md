@@ -353,6 +353,11 @@ workers/      Celery schedules and background tasks
 
 ## Deployment
 
+For Vercel + Supabase + Upstash + Render, follow the
+[hosted deployment guide](docs/deploy_hosted.md) and configure [render.yaml](render.yaml)
+with a successful Release image SHA. Environment variables are listed in
+[.env.hosted.example](.env.hosted.example).
+
 The primary production target is a single trusted workstation running Docker
 and a repository-scoped GitHub Actions runner. Tailscale Serve terminates HTTPS
 and proxies the dashboard from `127.0.0.1:3000`; the service is available only

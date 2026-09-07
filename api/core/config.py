@@ -13,7 +13,14 @@ class Settings(BaseSettings):
     source_revision: str = Field(default="local", min_length=1, max_length=128)
     log_level: str = "INFO"
     database_url: str = "postgresql+asyncpg://jobradarvn:jobradarvn@localhost:5432/jobradarvn"
+    db_pool_size: int = Field(default=10, ge=1, le=100)
+    db_max_overflow: int = Field(default=20, ge=0, le=100)
+    db_pool_timeout: float = Field(default=30, gt=0, le=300)
     redis_url: str = "redis://localhost:6379/0"
+    redis_socket_timeout: float = Field(default=5, gt=0, le=60)
+    celery_broker_pool_limit: int = Field(default=2, ge=1, le=100)
+    celery_result_expires: int = Field(default=3600, ge=60)
+    enable_salary_retraining: bool = True
     jwt_secret_key: str = "development-only-secret-change-me"  # noqa: S105
     admin_api_key: str = "development-admin-key"
     cv_encryption_key: str = "development-cv-encryption-key-change-me"  # noqa: S105
@@ -23,6 +30,7 @@ class Settings(BaseSettings):
     max_jobs_per_page: int = Field(default=50, ge=1, le=100)
     rate_limit_enabled: bool = True
     trust_proxy_headers: bool = False
+    proxy_shared_secret: str = ""
     scraper_user_agent: str = "JobRadarVN-Research-Bot/1.0 (+https://jobradarvn.com/bot)"
     scraper_contact_email: str = "bot@jobradarvn.com"
     enable_itviec_scraper: bool = False
@@ -48,6 +56,8 @@ class Settings(BaseSettings):
         return value
 
     def validate_production_secrets(self) -> None:
+        if self.proxy_shared_secret and len(self.proxy_shared_secret) < 32:
+            raise ValueError("PROXY_SHARED_SECRET must contain at least 32 characters")
         if self.app_env != "production":
             return
         insecure = {

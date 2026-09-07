@@ -1,11 +1,24 @@
+import {headers} from "next/headers";
 import type {JobPage, MarketOverview, SalaryBand, SkillDemand} from "./types";
 
 const serverBase = process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-export const publicApiBase = "";
 
 async function request<T>(path: string, fallback: T): Promise<T> {
   try {
-    const response = await fetch(`${serverBase}${path}`, {cache: "no-store"});
+    const upstreamHeaders = new Headers();
+    const secret = process.env.PROXY_SHARED_SECRET;
+    if (secret) {
+      if (process.env.VERCEL !== "1" || secret.length < 32 || !serverBase.startsWith("https://")) {
+        return fallback;
+      }
+      const clientIp = (await headers()).get("x-vercel-forwarded-for");
+      if (!clientIp) return fallback;
+      upstreamHeaders.set("x-jobradar-proxy-secret", secret);
+      upstreamHeaders.set("x-jobradar-client-ip", clientIp);
+    }
+    const response = await fetch(`${serverBase}${path}`, {
+      cache: "no-store", headers: upstreamHeaders,
+    });
     if (!response.ok) return fallback;
     return (await response.json()) as T;
   } catch {
