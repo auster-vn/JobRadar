@@ -353,6 +353,10 @@ workers/      Celery schedules and background tasks
 
 ## Deployment
 
+For a free web + API demo, use [render.free.yaml](render.free.yaml) and the
+[free deployment guide](docs/deploy_free.md). This tier does not run background
+workers or the ML service.
+
 For Vercel + Supabase + Upstash + Render, follow the
 [hosted deployment guide](docs/deploy_hosted.md) and configure [render.yaml](render.yaml)
 with a successful Release image SHA. Environment variables are listed in
