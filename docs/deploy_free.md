@@ -4,6 +4,22 @@ Phạm vi đã chọn: web + API demo. Dùng `render.free.yaml`, **không dùng
 `render.yaml`** vì file đó tạo năm service trả phí. Chưa chạy Celery worker,
 Beat, embedding, ML API hoặc gửi alert tự động trên cloud.
 
+## Bản demo đã cấu hình
+
+- Web: https://jobradar-demo.vercel.app
+- API: https://jobradar-api-free.onrender.com
+- Supabase: project `jobradar`, Singapore; kết nối Session pooler qua TLS.
+- Upstash: database `jobradar-demo`, Free, không tự nâng cấp.
+- Dữ liệu khởi tạo: 64 tin có nhãn Demo và 3.208 bản ghi lương từ sáu snapshot.
+
+API dùng `scripts/start_hosted_api.sh` để chạy migration trước khi khởi động.
+Các bảng ứng dụng không cấp quyền cho role Data API `anon`/`authenticated`;
+quyền mặc định cho bảng, sequence và function mới đã được thu hồi trước migration.
+Frontend hiện được phát hành bằng Vercel CLI; push Git chưa tự phát hành frontend.
+Để cập nhật, chạy CI trên nhánh `deploy/hosted-platforms`, chọn Manual Deploy
+trong Render, rồi chạy `vercel deploy --prod` từ thư mục repository đã liên kết.
+Giữ biến môi trường hiện có ở cả hai nền tảng khi phát hành lại.
+
 ## Tài khoản và cấu hình
 
 1. Đăng nhập Vercel bằng tài khoản cá nhân, dùng gói Hobby cho demo cá nhân.
