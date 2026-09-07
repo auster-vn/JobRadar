@@ -1,0 +1,26 @@
+# Free demo: one API service. No paid workers, disks, or private services.
+# Import this file (not render.yaml) after creating jobradar-hosted env group.
+services:
+  - name: jobradar-api-free
+    type: web
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: deploy/hosted-platforms
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: "off"
+    numInstances: 1
+    healthCheckPath: /health/ready
+    # Free services have no pre-deploy command. Run migrations before serving.
+    dockerCommand: bash scripts/start_hosted_api.sh
+    envVars:
+      - fromGroup: jobradar-hosted
+      - key: ENABLE_SALARY_RETRAINING
+        value: "false"
+      - key: ENABLE_ITVIEC_SCRAPER
+        value: "false"
+      - key: ENABLE_TOPCV_SCRAPER
+        value: "false"
+      - key: ENABLE_VIETNAMWORKS_SCRAPER
+        value: "false"

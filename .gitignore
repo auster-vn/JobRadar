@@ -1,4 +1,5 @@
 .env
+.deploy/
 .venv/
 __pycache__/
 *.py[cod]
@@ -14,6 +15,7 @@ mlruns/
 logs/
 web/node_modules/
 web/.next/
+.vercel/
 web/out/
 web/test-results/
 web/*.tsbuildinfo

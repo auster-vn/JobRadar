@@ -4,7 +4,7 @@ import {Filter, LoaderCircle, Search, SlidersHorizontal} from "lucide-react";
 import {FormEvent, useState} from "react";
 
 import {JobRow} from "./JobRow";
-import {publicApiBase} from "@/lib/api";
+import {publicApiBase} from "@/lib/client-api";
 import type {JobPage} from "@/lib/types";
 
 export function JobsExplorer({initial}: {initial: JobPage}) {

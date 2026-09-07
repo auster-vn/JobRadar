@@ -16,7 +16,7 @@ env:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: vars.DEPLOY_TARGET != 'render' && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: [self-hosted, linux, x64, jobradar-production]
     timeout-minutes: 30
     concurrency:

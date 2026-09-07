@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import ipaddress
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -21,7 +23,13 @@ AUTHENTICATED_LIMITS: dict[tuple[str, str], tuple[int, int]] = {
     ("POST", "/api/salary/predict"): (30, 60),
     ("GET", "/api/profile/matching-jobs"): (20, 60),
 }
-redis: Redis = Redis.from_url(get_settings().redis_url, encoding="utf-8", decode_responses=True)
+redis: Redis = Redis.from_url(
+    get_settings().redis_url,
+    encoding="utf-8",
+    decode_responses=True,
+    socket_connect_timeout=get_settings().redis_socket_timeout,
+    socket_timeout=get_settings().redis_socket_timeout,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -34,8 +42,20 @@ def _identity(request: Request) -> tuple[str, bool]:
             return f"user:{decode_token(token, 'access')}", True
         except HTTPException:
             token = None
+    settings = get_settings()
+    # In hosted mode, only the authenticated frontend can assert a client IP.
+    # Never fall back to arbitrary forwarded headers when this mode is enabled.
+    if settings.proxy_shared_secret:
+        supplied = request.headers.get("X-JobRadar-Proxy-Secret", "")
+        if hmac.compare_digest(supplied.encode(), settings.proxy_shared_secret.encode()):
+            try:
+                address = ipaddress.ip_address(request.headers.get("X-JobRadar-Client-IP", ""))
+                return f"ip:{address}", False
+            except ValueError:
+                pass
+        return "ip:unverified-proxy", False
     forwarded = ""
-    if get_settings().trust_proxy_headers:
+    if settings.trust_proxy_headers:
         forwarded = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
     client_ip = forwarded or (request.client.host if request.client else "unknown")
     return f"ip:{client_ip}", False

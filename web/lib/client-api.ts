@@ -1,4 +1,4 @@
-import {publicApiBase} from "./api";
+export const publicApiBase = "";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {

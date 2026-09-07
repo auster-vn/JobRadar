@@ -1,0 +1,7 @@
+.deploy
+.env
+.env.*
+.venv
+.git
+**/node_modules
+**/.next

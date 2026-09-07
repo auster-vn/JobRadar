@@ -1,0 +1,84 @@
+# Replace RELEASE_SHA with an existing successful Release for auster-vn/JobRadar.
+# Create the jobradar-hosted Environment Group first; see docs/deploy_hosted.md.
+# All five images must use the same immutable commit SHA.
+services:
+  - name: jobradar-api
+    type: web
+    runtime: image
+    plan: 1c-2g
+    region: singapore
+    numInstances: 1
+    image:
+      url: ghcr.io/auster-vn/jobradarvn-backend:RELEASE_SHA
+      # For private GHCR packages, add creds: {fromRegistryCreds: YOUR_CREDENTIAL_NAME}
+    dockerCommand: >-
+      sh -ec 'exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT:-8000}" --no-proxy-headers'
+    healthCheckPath: /health/ready
+    preDeployCommand: bash scripts/init_hosted_database.sh
+    envVars:
+      - fromGroup: jobradar-hosted
+
+  - name: jobradar-worker
+    type: worker
+    runtime: image
+    plan: 1c-2g
+    region: singapore
+    numInstances: 1
+    image:
+      url: ghcr.io/auster-vn/jobradarvn-backend:RELEASE_SHA
+      # For private GHCR packages, add creds: {fromRegistryCreds: YOUR_CREDENTIAL_NAME}
+    dockerCommand: >-
+      celery -A workers.celery_app worker -Q alerts,scraping --concurrency=1 --loglevel=info --without-gossip --without-mingle
+    envVars:
+      - fromGroup: jobradar-hosted
+
+  - name: jobradar-ml-worker
+    type: worker
+    runtime: image
+    plan: 2c-4g
+    region: singapore
+    numInstances: 1
+    image:
+      url: ghcr.io/auster-vn/jobradarvn-ml:RELEASE_SHA
+      # For private GHCR packages, add creds: {fromRegistryCreds: YOUR_CREDENTIAL_NAME}
+    dockerCommand: >-
+      celery -A workers.celery_app worker -Q nlp,ml,analytics --concurrency=1 --loglevel=info --without-gossip --without-mingle
+    disk:
+      name: ml-artifacts
+      mountPath: /app/artifacts
+      sizeGB: 10
+    envVars:
+      - fromGroup: jobradar-hosted
+
+  - name: jobradar-beat
+    type: worker
+    runtime: image
+    plan: 1c-2g
+    region: singapore
+    numInstances: 1
+    image:
+      url: ghcr.io/auster-vn/jobradarvn-backend:RELEASE_SHA
+      # For private GHCR packages, add creds: {fromRegistryCreds: YOUR_CREDENTIAL_NAME}
+    dockerCommand: >-
+      celery -A workers.celery_app beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+    envVars:
+      - fromGroup: jobradar-hosted
+
+  - name: jobradar-ml-api
+    type: pserv
+    runtime: image
+    plan: 1c-2g
+    region: singapore
+    numInstances: 1
+    image:
+      url: ghcr.io/auster-vn/jobradarvn-ml:RELEASE_SHA
+      # For private GHCR packages, add creds: {fromRegistryCreds: YOUR_CREDENTIAL_NAME}
+    dockerCommand: >-
+      sh -ec 'python scripts/install_salary_model.py ml/model_seed/current artifacts/salary/serving && exec uvicorn ml.serving:app --host 0.0.0.0 --port 8002'
+    envVars:
+      - fromGroup: jobradar-hosted
+      - key: SALARY_MODEL_ARTIFACT_DIR
+        value: /app/artifacts/salary/serving
+      - key: REQUIRE_SALARY_MODEL
+        value: "true"
+
